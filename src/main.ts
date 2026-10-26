@@ -1,8 +1,11 @@
-import { Canvas, FabricImage, FabricObject, Textbox } from 'fabric';
+import { ActiveSelection, Canvas, FabricImage, FabricObject, Textbox } from 'fabric';
 import { createIcons, icons } from 'lucide';
+import { editImageBackground } from './background-editor';
 import './style.css';
 
 type Layer = FabricObject & { layerName?: string };
+type Alignment = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'center-both';
+const alignments: Alignment[] = ['left', 'center', 'right', 'top', 'middle', 'bottom', 'center-both'];
 type Snapshot = { scene: object; width: number; height: number; name: string };
 type SavePickerWindow = Window & {
   showSaveFilePicker?: (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle>;
@@ -30,11 +33,16 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div id="layers" class="layer-list"></div>
       <div id="no-layers" class="no-layers">${icon('layers-2')}<span>Chưa có lớp nào</span></div>
       <div class="layer-footer">${tool('raise', 'arrow-up', 'Đưa lớp lên trên')}${tool('lower', 'arrow-down', 'Đưa lớp xuống dưới')}<span class="spacer"></span>${tool('add-layer', 'plus', 'Thêm lớp ảnh')}</div>
+      <section class="layer-alignment" aria-label="Canh chỉnh lớp">
+        <label for="alignment-target">Canh theo</label><select id="alignment-target"><option value="selection">Các lớp đang chọn</option><option value="canvas">Khung ảnh</option></select>
+        <div class="layer-align-tools">${tool('align-layers-left', 'align-horizontal-justify-start', 'Canh trái các lớp')}${tool('align-layers-center', 'align-horizontal-justify-center', 'Canh giữa ngang các lớp')}${tool('align-layers-right', 'align-horizontal-justify-end', 'Canh phải các lớp')}${tool('align-layers-top', 'align-vertical-justify-start', 'Canh trên các lớp')}${tool('align-layers-middle', 'align-vertical-justify-center', 'Canh giữa dọc các lớp')}${tool('align-layers-bottom', 'align-vertical-justify-end', 'Canh dưới các lớp')}</div>
+        <button id="align-layers-center-both" class="button align-canvas-center" title="Đặt từng lớp vào chính giữa khung ảnh">${icon('crosshair')} Chính giữa khung ảnh</button>
+      </section>
       <section class="document-section"><h2>Khung ảnh</h2><div class="two-fields"><label>Rộng <span>px</span><input id="canvas-width" type="number" min="1" max="8192" value="1200" /></label><label>Cao <span>px</span><input id="canvas-height" type="number" min="1" max="8192" value="800" /></label></div><label class="background-row">Nền ảnh <input id="background" type="color" value="#ffffff" aria-label="Màu nền ảnh" /></label><label class="checkbox-row"><input id="transparent" type="checkbox" checked /> Nền trong suốt</label></section>
     </aside>
     <section class="workspace" aria-label="Vùng chỉnh ảnh">
       <div class="workspace-heading"><span id="document-label">Ảnh chưa đặt tên</span><span id="dimensions">1200 × 800 px</span></div>
-      <div id="viewport" class="viewport"><div id="canvas-shell" class="canvas-shell"><canvas id="canvas"></canvas></div>
+      <div id="viewport" class="viewport"><div id="canvas-shell" class="canvas-shell"><canvas id="canvas"></canvas><button id="resize-east" class="canvas-resize-handle resize-east" data-axis="x" type="button" title="Kéo để đổi chiều rộng khung" aria-label="Kéo để đổi chiều rộng khung"></button><button id="resize-south" class="canvas-resize-handle resize-south" data-axis="y" type="button" title="Kéo để đổi chiều cao khung" aria-label="Kéo để đổi chiều cao khung"></button><button id="resize-corner" class="canvas-resize-handle resize-corner" data-axis="xy" type="button" title="Kéo để đổi chiều rộng và cao khung" aria-label="Kéo để đổi chiều rộng và cao khung"></button></div>
         <div id="empty-state" class="empty-state"><div class="empty-art">${icon('image-plus')}<span class="art-plus">+</span></div><h1>Bức ảnh của bạn,<br />theo cách của bạn.</h1><button id="first-upload" class="button primary">${icon('upload')} Chọn ảnh gốc</button><span class="paste-separator">hoặc</span><button id="first-paste" class="paste-link">${icon('clipboard-paste')} Dán ảnh từ clipboard</button><span class="file-formats">PNG, JPG, WebP · Kéo thả ảnh vào đây</span></div>
       </div>
       <footer class="workspace-footer"><span id="selection-label">Chưa chọn lớp</span><div class="zoom-tools">${tool('zoom-out', 'minus', 'Thu nhỏ')}<output id="zoom-label">100%</output>${tool('zoom-in', 'plus', 'Phóng to')}<span class="toolbar-divider"></span>${tool('fit', 'maximize', 'Vừa khung')}</div></footer>
@@ -44,7 +52,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div id="nothing-selected" class="nothing-selected">${icon('mouse-pointer-2')}<p>Chưa chọn đối tượng</p></div>
       <div id="properties" hidden>
         <section class="property-section"><label>Tên lớp<input id="layer-name" type="text" maxlength="100" /></label><div class="two-fields"><label>X<input id="pos-x" type="number" /></label><label>Y<input id="pos-y" type="number" /></label></div><div class="two-fields"><label>Rộng <span>px</span><input id="obj-width" type="number" min="1" /></label><label>Cao <span>px</span><input id="obj-height" type="number" min="1" /></label></div><label>Xoay <span>°</span><input id="rotation" type="number" min="-360" max="360" /></label><label class="range-label">Độ trong suốt <output id="opacity-value">100%</output><input id="opacity" type="range" min="0" max="100" value="100" /></label></section>
-        <section id="text-properties" class="property-section" hidden><h2>Văn bản</h2><label>Nội dung<textarea id="text-content" rows="3"></textarea></label><label>Phông chữ<select id="font-family"><option value="Be Vietnam Pro">Be Vietnam Pro</option><option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Times New Roman">Times New Roman</option><option value="Courier New">Courier New</option><option value="Verdana">Verdana</option><option value="Trebuchet MS">Trebuchet MS</option></select></label><div class="two-fields"><label>Cỡ chữ<input id="font-size" type="number" min="1" max="1000" /></label><label>Màu chữ<input id="text-color" type="color" value="#172b29" /></label></div><label>Mã màu HEX<input id="text-hex" type="text" value="#172b29" placeholder="#172b29" spellcheck="false" autocomplete="off" aria-label="Mã màu HEX" /></label><div class="text-tools">${tool('bold', 'bold', 'Chữ đậm')}${tool('italic', 'italic', 'Chữ nghiêng')}${tool('underline', 'underline', 'Gạch chân')}<span class="toolbar-divider"></span>${tool('align-left', 'align-left', 'Căn trái')}${tool('align-center', 'align-center', 'Căn giữa')}${tool('align-right', 'align-right', 'Căn phải')}</div></section>
+        <section id="image-properties" class="property-section" hidden><h2>Tách nền</h2><button id="remove-background" class="button background-tool" type="button">${icon('wand-sparkles')} Tách nền AI</button><p class="background-tool-note">Tách nền, dùng cọ/Magic tinh chỉnh và áp dụng trực tiếp vào lớp ảnh.</p></section>
+        <section id="text-properties" class="property-section" hidden><h2>Văn bản</h2><label>Nội dung<textarea id="text-content" rows="3"></textarea></label><label>Phông chữ<select id="font-family"><option value="Arial, Helvetica, sans-serif">Arial</option><option value="Verdana, Geneva, sans-serif">Verdana</option><option value="Tahoma, Geneva, sans-serif">Tahoma</option><option value="'Trebuchet MS', sans-serif">Trebuchet MS</option><option value="Georgia, serif">Georgia</option><option value="'Times New Roman', Times, serif">Times New Roman</option><option value="'Palatino Linotype', 'Book Antiqua', Palatino, serif">Palatino</option><option value="'Courier New', Courier, monospace">Courier New</option><option value="'Lucida Console', Monaco, monospace">Lucida Console</option><option value="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif">Impact</option><option value="system-ui, sans-serif">System UI</option><option value="ui-serif, Georgia, serif">UI Serif</option><option value="ui-monospace, 'Courier New', monospace">UI Monospace</option></select></label><div class="two-fields"><label>Cỡ chữ<input id="font-size" type="number" min="1" max="1000" /></label><label>Màu chữ<input id="text-color" type="color" value="#172b29" /></label></div><label>Mã màu HEX<input id="text-hex" type="text" value="#172b29" placeholder="#172b29" spellcheck="false" autocomplete="off" aria-label="Mã màu HEX" /></label><div class="text-tools">${tool('bold', 'bold', 'Chữ đậm')}${tool('italic', 'italic', 'Chữ nghiêng')}${tool('underline', 'underline', 'Gạch chân')}<span class="toolbar-divider"></span>${tool('align-left', 'align-left', 'Căn trái')}${tool('align-center', 'align-center', 'Căn giữa')}${tool('align-right', 'align-right', 'Căn phải')}</div></section>
       </div>
       <div class="panel-bottom"><span class="status-dot"></span><span id="status" role="status" aria-live="polite">Sẵn sàng chỉnh ảnh</span></div>
     </aside>
@@ -68,8 +77,20 @@ let busy = false;
 let history: Snapshot[] = [];
 let historyIndex = -1;
 let toastTimer: ReturnType<typeof setTimeout>;
+let selectionAnchorIndex = -1;
+let resizeDrag: { pointerId: number; startX: number; startY: number; startWidth: number; startHeight: number; startZoom: number; axes: string } | null = null;
 const active = () => canvas.getActiveObject() as Layer | undefined;
 const isText = (object: FabricObject | undefined): object is Textbox => object instanceof Textbox;
+const selectedObjects = () => {
+  const object = canvas.getActiveObject();
+  return object instanceof ActiveSelection ? object.getObjects() as Layer[] : object ? [object as Layer] : [];
+};
+function setSelectedObjects(objects: Layer[]) {
+  const selectable = objects.filter(object => object.selectable && canvas.getObjects().includes(object));
+  canvas.discardActiveObject();
+  if (selectable.length === 1) canvas.setActiveObject(selectable[0]);
+  else if (selectable.length > 1) canvas.setActiveObject(new ActiveSelection(selectable, { canvas }));
+}
 const notify = (message: string) => {
   element('toast').textContent = message;
   element('toast').hidden = false;
@@ -122,13 +143,17 @@ function renderLayers() {
   const container = element('layers');
   container.replaceChildren();
   const objects = canvas.getObjects() as Layer[];
+  const selected = selectedObjects();
   element('layer-count').textContent = String(objects.length);
   element('no-layers').hidden = objects.length > 0;
   [...objects].reverse().forEach((object, reverseIndex) => {
     const row = document.createElement('div');
-    row.className = `layer-row${active() === object ? ' selected' : ''}${!object.visible ? ' muted' : ''}`;
+    row.className = `layer-row${selected.includes(object) ? ' selected' : ''}${!object.visible ? ' muted' : ''}`;
     const select = document.createElement('button');
     select.className = 'layer-select';
+    select.type = 'button';
+    select.title = 'Chọn lớp. Ctrl/Cmd hoặc Shift + nhấp để chọn nhiều lớp.';
+    select.setAttribute('aria-pressed', String(selected.includes(object)));
     const thumbnail = document.createElement('span');
     thumbnail.className = 'layer-thumb';
     if (object instanceof FabricImage) {
@@ -145,7 +170,26 @@ function renderLayers() {
     kind.textContent = isText(object) ? 'Văn bản' : 'Hình ảnh';
     caption.append(name, kind);
     select.append(thumbnail, caption);
-    select.addEventListener('click', () => { if (busy) return; canvas.setActiveObject(object); canvas.requestRenderAll(); render(); });
+    select.addEventListener('click', event => {
+      if (busy) return;
+      const ordered = [...objects].reverse();
+      let next: Layer[];
+      if (event.shiftKey && selectionAnchorIndex >= 0) {
+        const start = Math.min(selectionAnchorIndex, reverseIndex);
+        const end = Math.max(selectionAnchorIndex, reverseIndex);
+        next = ordered.slice(start, end + 1).filter(layer => layer.selectable);
+      } else if (event.ctrlKey || event.metaKey) {
+        next = selectedObjects();
+        next = next.includes(object) ? next.filter(layer => layer !== object) : [...next, object];
+        selectionAnchorIndex = reverseIndex;
+      } else {
+        next = [object];
+        selectionAnchorIndex = reverseIndex;
+      }
+      setSelectedObjects(next);
+      canvas.requestRenderAll();
+      render();
+    });
     row.append(select);
     const toggle = (name: string, title: string, action: () => void) => {
       const button = document.createElement('button');
@@ -167,11 +211,22 @@ function renderLayers() {
   });
 }
 function renderProperties() {
-  const object = active();
+  const objects = selectedObjects();
+  const object = objects.length === 1 ? objects[0] : undefined;
   element('properties').hidden = !object;
   element('nothing-selected').hidden = !!object;
-  element('selection-label').textContent = object?.layerName || 'Chưa chọn lớp';
-  for (const id of ['duplicate', 'delete', 'raise', 'lower']) input(id).disabled = !object || busy;
+  element('nothing-selected').querySelector('p')!.textContent = objects.length > 1 ? `${objects.length} lớp được chọn` : 'Chưa chọn đối tượng';
+  element('selection-label').textContent = objects.length > 1 ? `${objects.length} lớp được chọn` : object?.layerName || 'Chưa chọn lớp';
+  input('duplicate').disabled = objects.length !== 1 || busy;
+  input('delete').disabled = objects.length === 0 || busy;
+  element('image-properties').hidden = !(object instanceof FabricImage);
+  (element('remove-background') as HTMLButtonElement).disabled = !(object instanceof FabricImage) || busy || !object.selectable;
+  for (const id of ['raise', 'lower']) input(id).disabled = objects.length !== 1 || busy;
+  const alignToCanvas = element<HTMLSelectElement>('alignment-target').value === 'canvas';
+  for (const alignment of alignments) {
+    element<HTMLButtonElement>(`align-layers-${alignment}`).disabled = busy || objects.some(layer => !layer.selectable) || objects.length < (alignToCanvas ? 1 : 2) || (alignment === 'center-both' && !alignToCanvas);
+  }
+  element('align-layers-center-both').hidden = !alignToCanvas;
   if (!object) return;
   const values: Record<string, string | number> = {
     'layer-name': object.layerName || '', 'pos-x': Math.round(object.left), 'pos-y': Math.round(object.top),
@@ -214,6 +269,33 @@ function changeObject(update: (object: Layer) => void, save = true) {
   object.setCoords();
   canvas.requestRenderAll();
   if (save) record();
+  render();
+}
+function alignSelected(alignment: Alignment) {
+  const objects = selectedObjects();
+  const alignToCanvas = element<HTMLSelectElement>('alignment-target').value === 'canvas';
+  if (busy || objects.length < (alignToCanvas ? 1 : 2) || objects.some(object => !object.selectable) || (alignment === 'center-both' && !alignToCanvas)) return;
+  canvas.discardActiveObject();
+  const bounds = objects.map(object => object.getBoundingRect());
+  const horizontal = alignment === 'left' || alignment === 'center' || alignment === 'right' || alignment === 'center-both';
+  const vertical = alignment === 'top' || alignment === 'middle' || alignment === 'bottom' || alignment === 'center-both';
+  const leftEdge = alignToCanvas ? 0 : Math.min(...bounds.map(bound => bound.left));
+  const rightEdge = alignToCanvas ? documentWidth : Math.max(...bounds.map(bound => bound.left + bound.width));
+  const topEdge = alignToCanvas ? 0 : Math.min(...bounds.map(bound => bound.top));
+  const bottomEdge = alignToCanvas ? documentHeight : Math.max(...bounds.map(bound => bound.top + bound.height));
+  const targetX = alignment === 'left' ? leftEdge : alignment === 'right' ? rightEdge : (leftEdge + rightEdge) / 2;
+  const targetY = alignment === 'top' ? topEdge : alignment === 'bottom' ? bottomEdge : (topEdge + bottomEdge) / 2;
+  objects.forEach((object, index) => {
+    const bound = bounds[index];
+    const edgeX = alignment === 'left' ? bound.left : alignment === 'right' ? bound.left + bound.width : bound.left + bound.width / 2;
+    const edgeY = alignment === 'top' ? bound.top : alignment === 'bottom' ? bound.top + bound.height : bound.top + bound.height / 2;
+    if (horizontal) object.set('left', object.left + targetX - edgeX);
+    if (vertical) object.set('top', object.top + targetY - edgeY);
+    object.setCoords();
+  });
+  setSelectedObjects(objects);
+  canvas.requestRenderAll();
+  record();
   render();
 }
 async function importImages(files: File[]) {
@@ -271,7 +353,7 @@ async function pasteClipboard() {
 }
 function addText(content = 'Nhập nội dung của bạn') {
   if (busy) return;
-  const text = new Textbox(content, { originX: 'left', originY: 'top', left: documentWidth * 0.15, top: documentHeight * 0.2, width: documentWidth * 0.7, fontSize: Math.max(12, Math.round(documentWidth / 24)), fontFamily: 'Be Vietnam Pro', fill: '#172b29' });
+  const text = new Textbox(content, { originX: 'left', originY: 'top', left: documentWidth * 0.15, top: documentHeight * 0.2, width: documentWidth * 0.7, fontSize: Math.max(12, Math.round(documentWidth / 24)), fontFamily: 'Arial, Helvetica, sans-serif', fill: '#172b29' });
   (text as Layer).layerName = 'Văn bản mới';
   canvas.add(text);
   canvas.setActiveObject(text);
@@ -281,16 +363,67 @@ function addText(content = 'Nhập nội dung của bạn') {
   input('text-content').focus();
   input('text-content').select();
 }
-function remove() {
-  const object = active();
+async function editSelectedBackground() {
+  const objects = selectedObjects();
+  const object = objects.length === 1 && objects[0] instanceof FabricImage ? objects[0] : undefined;
   if (!object || busy || !object.selectable) return;
-  canvas.remove(object);
+  if (object.width > 8192 || object.height > 8192 || object.width * object.height > 16_000_000) {
+    notify('Tách nền hỗ trợ ảnh tối đa 16 megapixel và 8192 px mỗi chiều.');
+    return;
+  }
+
+  busy = true;
+  render();
+  updateHistoryButtons();
+  let applied = false;
+  try {
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = object.width;
+    sourceCanvas.height = object.height;
+    const context = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Không thể khởi tạo vùng đọc ảnh.');
+    context.drawImage(object.getElement(), 0, 0, object.width, object.height);
+    const pixels = context.getImageData(0, 0, object.width, object.height).data;
+    sourceCanvas.width = 0;
+    sourceCanvas.height = 0;
+    const result = await editImageBackground(pixels, object.width, object.height, (object as Layer).layerName || 'Lớp ảnh');
+    if (!result) return;
+    const reader = new FileReader();
+    const imageUrl = await new Promise<string>((resolve, reject) => {
+      reader.onerror = () => reject(reader.error || new Error('Không thể đọc ảnh PNG đã xử lý.'));
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Định dạng ảnh PNG không hợp lệ.'));
+      reader.readAsDataURL(result);
+    });
+    const processedImage = new Image();
+    processedImage.src = imageUrl;
+    await processedImage.decode();
+    object.setElement(processedImage);
+    object.setCoords();
+    canvas.setActiveObject(object);
+    canvas.requestRenderAll();
+    applied = true;
+  } catch (error) {
+    reportError(error);
+  } finally {
+    busy = false;
+    if (applied) record();
+    render();
+    updateHistoryButtons();
+  }
+}
+function remove() {
+  const objects = selectedObjects();
+  if (!objects.length || busy || objects.some(object => !object.selectable)) return;
+  canvas.discardActiveObject();
+  canvas.remove(...objects);
   canvas.discardActiveObject();
   record();
   render();
 }
+on('remove-background', () => { void editSelectedBackground(); });
 async function duplicate() {
-  const object = active();
+  const objects = selectedObjects();
+  const object = objects.length === 1 ? objects[0] : undefined;
   if (!object || busy) return;
   busy = true;
   try {
@@ -358,6 +491,8 @@ on('redo', () => { void restore(1); });
 on('export', exportPng);
 on('raise', () => changeObject(object => { canvas.bringObjectForward(object); }));
 on('lower', () => changeObject(object => { canvas.sendObjectBackwards(object); }));
+for (const alignment of alignments) on(`align-layers-${alignment}`, () => alignSelected(alignment));
+element('alignment-target').addEventListener('change', renderProperties);
 on('zoom-in', () => setZoom(zoom * 1.2));
 on('zoom-out', () => setZoom(zoom / 1.2));
 on('fit', fit);
@@ -394,7 +529,7 @@ function hexColor(value: string) {
 input('text-hex').addEventListener('input', () => {
   const color = hexColor(input('text-hex').value);
   input('text-hex').setAttribute('aria-invalid', String(!color));
-  if (color) changeObject(object => object.set('fill', color), false);
+  if (color) changeObject(object => { object.set('fill', color); input('text-color').value = color; }, false);
 });
 input('text-hex').addEventListener('change', () => {
   const color = hexColor(input('text-hex').value);
@@ -429,6 +564,36 @@ document.addEventListener('paste', event => {
   else if (text.trim()) { event.preventDefault(); addText(text); }
 });
 const viewport = element('viewport');
+document.querySelectorAll<HTMLButtonElement>('.canvas-resize-handle').forEach(handle => {
+  handle.addEventListener('pointerdown', event => {
+    if (busy) return;
+    event.preventDefault();
+    event.stopPropagation();
+    resizeDrag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startWidth: documentWidth, startHeight: documentHeight, startZoom: zoom, axes: handle.dataset.axis || '' };
+    handle.setPointerCapture(event.pointerId);
+  });
+});
+window.addEventListener('pointermove', event => {
+  if (!resizeDrag || event.pointerId !== resizeDrag.pointerId) return;
+  const width = resizeDrag.axes.includes('x') ? Math.round(resizeDrag.startWidth + (event.clientX - resizeDrag.startX) / resizeDrag.startZoom) : resizeDrag.startWidth;
+  const height = resizeDrag.axes.includes('y') ? Math.round(resizeDrag.startHeight + (event.clientY - resizeDrag.startY) / resizeDrag.startZoom) : resizeDrag.startHeight;
+  if (width < 1 || height < 1 || width > 8192 || height > 8192 || width * height > 32_000_000) return;
+  documentWidth = width;
+  documentHeight = height;
+  setZoom(resizeDrag.startZoom);
+  input('canvas-width').value = String(width);
+  input('canvas-height').value = String(height);
+  element('dimensions').textContent = `${width} × ${height} px`;
+});
+function finishCanvasResize(event: PointerEvent) {
+  if (!resizeDrag || event.pointerId !== resizeDrag.pointerId) return;
+  const changed = documentWidth !== resizeDrag.startWidth || documentHeight !== resizeDrag.startHeight;
+  resizeDrag = null;
+  if (changed) record();
+  render();
+}
+window.addEventListener('pointerup', finishCanvasResize);
+window.addEventListener('pointercancel', finishCanvasResize);
 viewport.addEventListener('dragover', event => { event.preventDefault(); viewport.classList.add('dragover'); });
 viewport.addEventListener('dragleave', event => { if (!viewport.contains(event.relatedTarget as Node)) viewport.classList.remove('dragover'); });
 viewport.addEventListener('drop', event => { event.preventDefault(); viewport.classList.remove('dragover'); void importImages(Array.from(event.dataTransfer?.files || [])); });
@@ -439,7 +604,7 @@ document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); void restore(1); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') { event.preventDefault(); void duplicate(); }
   if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); remove(); }
-  if (event.key === 'Escape') { canvas.discardActiveObject(); canvas.requestRenderAll(); render(); document.body.dataset.panel = ''; }
+  if (event.key === 'Escape') { selectionAnchorIndex = -1; canvas.discardActiveObject(); canvas.requestRenderAll(); render(); document.body.dataset.panel = ''; }
   const offsets: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
   if (offsets[event.key] && active()) {
     event.preventDefault();

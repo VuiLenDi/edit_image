@@ -9,8 +9,12 @@
     "test": "playwright test"
   },
   "dependencies": {
+    "@imgly/background-removal": "^1.7.0",
     "fabric": "^7.4.0",
     "lucide": "^0.468.0"
+  },
+  "overrides": {
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
