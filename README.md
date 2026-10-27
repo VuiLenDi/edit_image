@@ -21,6 +21,7 @@ Truy cập <http://localhost:5174>. Build production bằng `npm run build`; k�
 - Thêm chữ; sửa nội dung ở bảng thuộc tính hoặc nhấp đúp chữ trên canvas. Dán chữ bằng Ctrl+V / Cmd+V trên canvas để tạo lớp mới, hoặc dán trong ô nội dung để sửa lớp hiện tại. Nút Dán hỗ trợ cả ảnh và chữ.
 - Có font, cỡ chữ, màu, đậm, nghiêng, gạch chân và căn lề. Ô Mã màu HEX cho phép gõ/dán mã 3 hoặc 6 chữ số, có hoặc không có dấu #; đồng bộ với bảng chọn màu và hỗ trợ hoàn tác.
 - Với lớp ảnh đang chọn, mở **Tách nền AI** để xử lý ngay trên thiết bị; dùng cọ xóa/khôi phục, Magic chọn vùng liền kề, tinh chỉnh viền/khử ám màu và nền xem trước. Áp dụng kết quả vào chính lớp ảnh; có thể hoàn tác bằng lịch sử chung của editor.
+- Chọn lớp ảnh rồi bấm **Bỏ viền trong suốt** trong bảng thuộc tính để cắt phần alpha bằng 0 thừa quanh ảnh, kể cả sau tách nền. Giữ nguyên pixel bán trong suốt, khoảng trống bên trong, vị trí nội dung trên khung, tỷ lệ và góc xoay; không đổi kích thước khung ảnh. Hỗ trợ hoàn tác/làm lại. Ảnh hoàn toàn trong suốt hoặc không có viền thừa sẽ được thông báo và giữ nguyên.
 - Nhân bản, xóa, khóa, ẩn lớp, hoàn tác/làm lại tối đa 25 trạng thái; phím mũi tên di chuyển lớp, Shift tăng bước lên 10 px.
 - Đổi kích thước khung, nền màu hoặc trong suốt; xuất PNG ở độ phân giải khung ảnh, độc lập mức zoom.
 - Trên điện thoại, mở danh sách lớp và thuộc tính bằng hai nút biểu tượng trên thanh công cụ.
@@ -42,4 +43,4 @@ npx playwright install chromium
 npm test
 ```
 
-11 kiểm thử bao gồm upload, clipboard ảnh/chữ, hex, thứ tự lớp bằng pixel PNG, canh lớp theo vùng chọn và khung ảnh, kích thước xuất ở mức zoom khác nhau, chữ tiếng Việt, định dạng, nhân bản/xóa/ẩn/khóa, lịch sử, nền trong suốt, giao diện điện thoại và công cụ mặt nạ tách nền. Hộp lưu hệ điều hành được mô phỏng để xác nhận tham số, dữ liệu PNG được ghi, đóng tệp và hủy lưu; luồng tải xuống dự phòng kiểm tra tên tệp thực tế.
+13 kiểm thử bao gồm upload, clipboard ảnh/chữ, hex, thứ tự lớp bằng pixel PNG, canh lớp theo vùng chọn và khung ảnh, cắt viền trong suốt và bảo toàn pixel gốc/vị trí nội dung khi lớp đã co giãn/xoay, kích thước xuất ở mức zoom khác nhau, chữ tiếng Việt, định dạng, nhân bản/xóa/ẩn/khóa, lịch sử, nền trong suốt, giao diện điện thoại và công cụ mặt nạ tách nền. Hộp lưu hệ điều hành được mô phỏng để xác nhận tham số, dữ liệu PNG được ghi, đóng tệp và hủy lưu; luồng tải xuống dự phòng kiểm tra tên tệp thực tế.

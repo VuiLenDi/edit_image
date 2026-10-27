@@ -404,6 +404,134 @@ test('cancel picker does not download; fallback asks filename and supports cance
   expect(download.suggestedFilename()).toBe('ảnh tôi muốn lưu.png');
 });
 
+test('trim transparent image borders preserves transformed content, soft alpha and history', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/');
+  const data = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 100;
+    canvas.height = 80;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#00aa77';
+    context.fillRect(10, 20, 40, 30);
+    context.clearRect(20, 25, 5, 5);
+    context.fillStyle = 'rgba(0, 170, 119, 0.1)';
+    context.fillRect(10, 20, 1, 1);
+    return canvas.toDataURL().split(',')[1];
+  });
+  await page.locator('#file-input').setInputFiles({ name: 'padded.png', mimeType: 'image/png', buffer: Buffer.from(data, 'base64') });
+  await expect(page.locator('#layer-count')).toHaveText('1');
+  for (const [id, value] of [
+    ['canvas-width', '400'], ['canvas-height', '300'],
+    ['obj-width', '200'], ['obj-height', '160'],
+    ['pos-x', '250'], ['pos-y', '50'], ['rotation', '90'],
+  ]) {
+    await page.locator(`#${id}`).fill(value);
+    await page.locator(`#${id}`).press('Tab');
+  }
+  await page.locator('#zoom-out').click();
+  const zoom = await page.locator('#zoom-label').textContent();
+  const exportBytes = async () => {
+    await page.evaluate(() => { window.showSaveFilePicker = undefined; });
+    page.once('dialog', dialog => dialog.accept(dialog.defaultValue()));
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#export').click();
+    const png = await readFile(await (await downloadPromise).path());
+    return page.evaluate(async data => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${data}`;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0);
+      return [...context.getImageData(0, 0, canvas.width, canvas.height).data];
+    }, png.toString('base64'));
+  };
+  const before = await exportBytes();
+  const expectSameContentBounds = async () => {
+    const after = await exportBytes();
+    const bounds = pixels => {
+      let left = 400, top = 300, right = -1, bottom = -1;
+      for (let index = 3; index < pixels.length; index += 4) {
+        if (!pixels[index]) continue;
+        const x = ((index - 3) / 4) % 400;
+        const y = Math.floor((index - 3) / 4 / 400);
+        left = Math.min(left, x); top = Math.min(top, y);
+        right = Math.max(right, x); bottom = Math.max(bottom, y);
+      }
+      return { left, top, right, bottom };
+    };
+    const beforeBounds = bounds(before);
+    const afterBounds = bounds(after);
+    for (const edge of ['left', 'top', 'right', 'bottom']) {
+      expect(Math.abs(afterBounds[edge] - beforeBounds[edge])).toBeLessThanOrEqual(1);
+    }
+  };
+  await page.locator('#trim-transparent').click();
+  await expect(page.locator('#toast')).toContainText('40 × 30 px');
+  await expect(page.locator('#obj-width')).toHaveValue('80');
+  await expect(page.locator('#obj-height')).toHaveValue('60');
+  await expect(page.locator('#rotation')).toHaveValue('90');
+  await expect(page.locator('#zoom-label')).toHaveText(zoom);
+  await expect(page.locator('#canvas-width')).toHaveValue('400');
+  await expect(page.locator('#canvas-height')).toHaveValue('300');
+  const sourcePixels = await page.locator('.layer-thumb img').evaluate(async (thumbnail, original) => {
+    const readPixels = (image, x, y, width, height) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, x, y, width, height, 0, 0, width, height);
+      return [...context.getImageData(0, 0, width, height).data];
+    };
+    const image = new Image();
+    image.src = `data:image/png;base64,${original}`;
+    await image.decode();
+    await thumbnail.decode();
+    return {
+      expected: readPixels(image, 10, 20, 40, 30),
+      actual: readPixels(thumbnail, 0, 0, 40, 30),
+      width: thumbnail.naturalWidth,
+      height: thumbnail.naturalHeight,
+    };
+  }, data);
+  expect(sourcePixels.width).toBe(40);
+  expect(sourcePixels.height).toBe(30);
+  expect(sourcePixels.actual).toEqual(sourcePixels.expected);
+  await expectSameContentBounds();
+  await page.locator('#undo').click();
+  await expect(page.locator('#redo')).toBeEnabled();
+  await page.locator('.layer-select').click();
+  await expect(page.locator('#obj-width')).toHaveValue('200');
+  await expect(page.locator('#obj-height')).toHaveValue('160');
+  await expectSameContentBounds();
+  await page.locator('#redo').click();
+  await expect(page.locator('#redo')).toBeDisabled();
+  await page.locator('.layer-select').click();
+  await expect(page.locator('#obj-width')).toHaveValue('80');
+  await expectSameContentBounds();
+  await page.locator('#trim-transparent').click();
+  await expect(page.locator('#toast')).toHaveText('Lớp ảnh không có viền trong suốt thừa.');
+  await page.getByRole('button', { name: 'Khóa padded.png', exact: true }).click();
+  await expect(page.locator('#trim-transparent')).toBeDisabled();
+});
+
+test('trimming fully transparent images reports no content without removing the layer', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await upload(page, 'empty.png', 'rgba(0, 0, 0, 0)', 40, 30);
+  await page.locator('#trim-transparent').click();
+  await expect(page.locator('#toast')).toContainText('hoàn toàn trong suốt');
+  await expect(page.locator('#obj-width')).toHaveValue('40');
+  await expect(page.locator('#obj-height')).toHaveValue('30');
+  await expect(page.locator('#layer-count')).toHaveText('1');
+  await expect(page.locator('#export')).toBeEnabled();
+  await page.locator('#add-text').click();
+  await expect(page.locator('#trim-transparent')).toBeHidden();
+});
+
 test('background editor selects and erases connected pixels, applies to layer and supports global undo', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');

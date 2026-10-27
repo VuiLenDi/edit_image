@@ -1,6 +1,7 @@
-import { ActiveSelection, Canvas, FabricImage, FabricObject, Textbox } from 'fabric';
+import { ActiveSelection, Canvas, FabricImage, FabricObject, Point, Textbox, util } from 'fabric';
 import { createIcons, icons } from 'lucide';
 import { editImageBackground } from './background-editor';
+import { cropRgba, extractAlpha, findVisibleBounds } from './mask';
 import './style.css';
 
 type Layer = FabricObject & { layerName?: string };
@@ -52,7 +53,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div id="nothing-selected" class="nothing-selected">${icon('mouse-pointer-2')}<p>Chưa chọn đối tượng</p></div>
       <div id="properties" hidden>
         <section class="property-section"><label>Tên lớp<input id="layer-name" type="text" maxlength="100" /></label><div class="two-fields"><label>X<input id="pos-x" type="number" /></label><label>Y<input id="pos-y" type="number" /></label></div><div class="two-fields"><label>Rộng <span>px</span><input id="obj-width" type="number" min="1" /></label><label>Cao <span>px</span><input id="obj-height" type="number" min="1" /></label></div><label>Xoay <span>°</span><input id="rotation" type="number" min="-360" max="360" /></label><label class="range-label">Độ trong suốt <output id="opacity-value">100%</output><input id="opacity" type="range" min="0" max="100" value="100" /></label></section>
-        <section id="image-properties" class="property-section" hidden><h2>Tách nền</h2><button id="remove-background" class="button background-tool" type="button">${icon('wand-sparkles')} Tách nền AI</button><p class="background-tool-note">Tách nền, dùng cọ/Magic tinh chỉnh và áp dụng trực tiếp vào lớp ảnh.</p></section>
+        <section id="image-properties" class="property-section" hidden><h2>Tách nền</h2><button id="remove-background" class="button background-tool" type="button">${icon('wand-sparkles')} Tách nền AI</button><p class="background-tool-note">Tách nền, dùng cọ/Magic tinh chỉnh và áp dụng trực tiếp vào lớp ảnh.</p><button id="trim-transparent" class="button background-tool" type="button">${icon('crop')} Bỏ viền trong suốt</button><p class="background-tool-note">Cắt vùng trong suốt thừa quanh lớp ảnh, giữ nguyên vị trí nội dung và khung ảnh.</p></section>
         <section id="text-properties" class="property-section" hidden><h2>Văn bản</h2><label>Nội dung<textarea id="text-content" rows="3"></textarea></label><label>Phông chữ<select id="font-family"><option value="Arial, Helvetica, sans-serif">Arial</option><option value="Verdana, Geneva, sans-serif">Verdana</option><option value="Tahoma, Geneva, sans-serif">Tahoma</option><option value="'Trebuchet MS', sans-serif">Trebuchet MS</option><option value="Georgia, serif">Georgia</option><option value="'Times New Roman', Times, serif">Times New Roman</option><option value="'Palatino Linotype', 'Book Antiqua', Palatino, serif">Palatino</option><option value="'Courier New', Courier, monospace">Courier New</option><option value="'Lucida Console', Monaco, monospace">Lucida Console</option><option value="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif">Impact</option><option value="system-ui, sans-serif">System UI</option><option value="ui-serif, Georgia, serif">UI Serif</option><option value="ui-monospace, 'Courier New', monospace">UI Monospace</option></select></label><div class="two-fields"><label>Cỡ chữ<input id="font-size" type="number" min="1" max="1000" /></label><label>Màu chữ<input id="text-color" type="color" value="#172b29" /></label></div><label>Mã màu HEX<input id="text-hex" type="text" value="#172b29" placeholder="#172b29" spellcheck="false" autocomplete="off" aria-label="Mã màu HEX" /></label><div class="text-tools">${tool('bold', 'bold', 'Chữ đậm')}${tool('italic', 'italic', 'Chữ nghiêng')}${tool('underline', 'underline', 'Gạch chân')}<span class="toolbar-divider"></span>${tool('align-left', 'align-left', 'Căn trái')}${tool('align-center', 'align-center', 'Căn giữa')}${tool('align-right', 'align-right', 'Căn phải')}</div></section>
       </div>
       <div class="panel-bottom"><span class="status-dot"></span><span id="status" role="status" aria-live="polite">Sẵn sàng chỉnh ảnh</span></div>
@@ -221,6 +222,7 @@ function renderProperties() {
   input('delete').disabled = objects.length === 0 || busy;
   element('image-properties').hidden = !(object instanceof FabricImage);
   (element('remove-background') as HTMLButtonElement).disabled = !(object instanceof FabricImage) || busy || !object.selectable;
+  element<HTMLButtonElement>('trim-transparent').disabled = !(object instanceof FabricImage) || busy || !object.selectable;
   for (const id of ['raise', 'lower']) input(id).disabled = objects.length !== 1 || busy;
   const alignToCanvas = element<HTMLSelectElement>('alignment-target').value === 'canvas';
   for (const alignment of alignments) {
@@ -411,6 +413,56 @@ async function editSelectedBackground() {
     updateHistoryButtons();
   }
 }
+async function trimSelectedImage() {
+  const objects = selectedObjects();
+  const object = objects.length === 1 && objects[0] instanceof FabricImage ? objects[0] : undefined;
+  if (!object || busy || !object.selectable) return;
+  busy = true;
+  render();
+  updateHistoryButtons();
+  let applied = false;
+  try {
+    const source = document.createElement('canvas');
+    source.width = object.width;
+    source.height = object.height;
+    const context = source.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Không thể đọc dữ liệu lớp ảnh.');
+    context.drawImage(object.getElement(), object.cropX, object.cropY, object.width, object.height, 0, 0, object.width, object.height);
+    const pixels = context.getImageData(0, 0, source.width, source.height).data;
+    const bounds = findVisibleBounds(pixels, extractAlpha(pixels), source.width, source.height);
+    if (!bounds) { notify('Lớp ảnh hoàn toàn trong suốt, không có nội dung để giữ lại.'); return; }
+    if (bounds.width === source.width && bounds.height === source.height) {
+      notify('Lớp ảnh không có viền trong suốt thừa.');
+      return;
+    }
+    const cropped = cropRgba(pixels, source.width, bounds);
+    const croppedCenter = util.transformPoint(
+      new Point(bounds.left + bounds.width / 2 - object.width / 2, bounds.top + bounds.height / 2 - object.height / 2),
+      object.calcTransformMatrix(),
+    );
+    source.width = bounds.width;
+    source.height = bounds.height;
+    context.putImageData(new ImageData(cropped, bounds.width, bounds.height), 0, 0);
+    const image = new Image();
+    image.src = source.toDataURL('image/png');
+    await image.decode();
+    object.setElement(image);
+    object.set({ cropX: 0, cropY: 0 });
+    object.setPositionByOrigin(croppedCenter, 'center', 'center');
+    object.setCoords();
+    canvas.requestRenderAll();
+    applied = true;
+    notify(`Đã bỏ viền trong suốt. Lớp ảnh còn ${bounds.width} × ${bounds.height} px.`);
+  } catch (error) {
+    console.error(error);
+    notify('Không thể cắt viền trong suốt. Vui lòng thử lại với ảnh nhỏ hơn.');
+  } finally {
+    busy = false;
+    if (applied) record();
+    render();
+    updateHistoryButtons();
+  }
+}
 function remove() {
   const objects = selectedObjects();
   if (!objects.length || busy || objects.some(object => !object.selectable)) return;
@@ -421,6 +473,7 @@ function remove() {
   render();
 }
 on('remove-background', () => { void editSelectedBackground(); });
+on('trim-transparent', () => { void trimSelectedImage(); });
 async function duplicate() {
   const objects = selectedObjects();
   const object = objects.length === 1 ? objects[0] : undefined;
