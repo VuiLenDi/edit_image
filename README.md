@@ -13,6 +13,58 @@ npm run dev -- --port 5174
 
 Truy cập <http://localhost:5174>. Build production bằng `npm run build`; kết quả nằm trong thư mục `dist`.
 
+## Triển khai AWS bằng Terraform
+
+Bản dev: <https://d2ri5vjdr61bxs.cloudfront.net> (account `086090976189`, S3 tại `ap-southeast-1`).
+
+Cấu hình trong [terraform](terraform/main.tf) tạo bucket S3 riêng tư, mã hóa AES256 và chặn toàn bộ truy cập công khai. CloudFront dùng Origin Access Control (SigV4) để đọc ảnh/web assets, chuyển HTTP sang HTTPS và cung cấp chứng chỉ cho tên miền mặc định `*.cloudfront.net`. Không cần backend, EC2, domain riêng hay chứng chỉ ACM.
+
+Yêu cầu Terraform 1.7+ (dưới 2.0), AWS CLI và tài khoản AWS đã được cấu hình credentials, ưu tiên SSO. Không ghi access key vào Terraform hoặc Git. Kiểm tra đúng tài khoản bằng `aws sts get-caller-identity` trước khi lập kế hoạch. Tài khoản thực thi cần quyền quản lý S3 và CloudFront cho các tài nguyên này.
+
+Khi dùng SSO, chọn profile qua biến môi trường `AWS_PROFILE` trước khi chạy các lệnh bên dưới. Bản dev hiện dùng profile local `dev-sso` với permission set `AWSAdministratorAccess`.
+
+Mặc định: region `ap-southeast-1`, môi trường `dev`, project `lop-image-editor`, CloudFront `PriceClass_All` để bao gồm các edge location Đông Nam Á. Có thể chỉnh qua các biến trong [terraform/terraform.tfvars.example](terraform/terraform.tfvars.example); tệp `.tfvars` riêng được Git bỏ qua. Mỗi môi trường phải dùng state riêng; chỉ đổi biến `environment` trên cùng state sẽ thay thế tài nguyên hiện có.
+
+Kiểm tra cấu hình không tạo tài nguyên AWS:
+
+```sh
+terraform -chdir=terraform init
+terraform -chdir=terraform fmt -check -recursive
+terraform -chdir=terraform validate
+terraform -chdir=terraform test
+```
+
+Kiểm thử dùng AWS mock, không cần credentials. Commit tệp [terraform/.terraform.lock.hcl](terraform/.terraform.lock.hcl) để giữ phiên bản provider nhất quán.
+
+Lập kế hoạch, xem thay đổi rồi mới triển khai (S3/CloudFront phát sinh phí theo sử dụng):
+
+```sh
+terraform -chdir=terraform plan -out=deploy.tfplan
+terraform -chdir=terraform show deploy.tfplan
+terraform -chdir=terraform apply deploy.tfplan
+```
+
+Terraform chỉ quản lý hạ tầng. Sau khi apply thành công, chạy từ thư mục gốc để build và upload ứng dụng:
+
+```sh
+npm ci
+npm run build
+bucket=$(terraform -chdir=terraform output -raw bucket_name)
+distribution=$(terraform -chdir=terraform output -raw distribution_id)
+aws s3 sync dist/ "s3://$bucket/" --exclude index.html --sse AES256 --cache-control 'public,max-age=3600'
+aws s3 cp dist/index.html "s3://$bucket/index.html" --sse AES256 --content-type 'text/html' --cache-control 'no-cache,no-store,must-revalidate'
+aws cloudfront create-invalidation --distribution-id "$distribution" --paths '/*'
+terraform -chdir=terraform output -raw site_url
+```
+
+Gửi rõ `--sse AES256` khi upload, kể cả khi bucket đã bật mã hóa mặc định. Trên account dev, upload không có header này bị SCP từ chối; upload có header AES256 đã được xác minh thành công. Không cần thay đổi SCP hay mở public bucket.
+
+Upload assets trước `index.html`; không xóa assets cũ để các phiên đang mở vẫn tải được chunk của bản trước. Chờ invalidation hoàn tất rồi kiểm tra URL HTTPS và công cụ tách nền. Không bật COEP/CSP hạn chế vì ứng dụng tải font và mô hình từ CDN bên ngoài. Cấu hình hiện tại phục vụ trang gốc, không chuyển lỗi assets thành HTML và chưa hỗ trợ route SPA dạng đường dẫn con.
+
+**State và CI/CD:** bước đầu dùng local state trong thư mục Terraform, được bỏ qua bởi Git. Giữ state an toàn, không xóa hoặc chia sẻ qua artifact công khai. Trước khi chạy CI/CD cần tạo bucket state riêng có versioning, mã hóa, chặn public và khóa state; chuyển state sang S3 backend, rồi cấu hình GitHub Actions OIDC cùng IAM role giới hạn quyền. Chưa có workflow CI/CD hay tài nguyên IAM trong bước này.
+
+**Dọn tài nguyên:** `terraform -chdir=terraform destroy` xóa hạ tầng nhưng sẽ từ chối xóa bucket còn dữ liệu (`force_destroy = false`). Cần chủ động kiểm tra và xóa các object trước khi hủy. Không chạy destroy trên state dùng chung hoặc khi chưa xác nhận môi trường.
+
 ## Chức năng
 
 - Upload, kéo thả hoặc dán ảnh bằng Ctrl+V / Cmd+V. Ảnh đầu tiên xác định kích thước khung; ảnh tiếp theo trở thành lớp chồng lên.
