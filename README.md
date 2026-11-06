@@ -13,6 +13,12 @@ npm run dev -- --port 5174
 
 Truy cập <http://localhost:5174>. Build production bằng `npm run build`; kết quả nằm trong thư mục `dist`.
 
+## Cài trên iPhone
+
+Mở website bằng Safari trên iPhone, nhấn **Chia sẻ** rồi chọn **Thêm vào màn hình chính**. Bật **Mở dưới dạng ứng dụng web** nếu tùy chọn này hiện ra, sau đó nhấn **Thêm**. Shortcut dùng biểu tượng Lớp và mở editor ở chế độ toàn màn hình. Website cần được phục vụ qua HTTPS; trang CloudFront dev đã dùng HTTPS.
+
+Khi xuất PNG trên iPhone, menu chia sẻ iOS sẽ mở ra; chọn **Lưu hình ảnh** để lưu vào ứng dụng Ảnh. Nếu trình duyệt không hỗ trợ chia sẻ file, PNG được tải về mục **Tệp > Tải về** hoặc vị trí tải xuống đã chọn trong Safari.
+
 ## Triển khai AWS bằng Terraform
 
 Bản dev: <https://d2ri5vjdr61bxs.cloudfront.net> (account `086090976189`, S3 tại `ap-southeast-1`).
