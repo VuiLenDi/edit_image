@@ -1,0 +1,4 @@
+aws_region   = "ap-southeast-1"
+project_name = "lop-image-editor"
+environment  = "dev"
+price_class  = "PriceClass_All"
