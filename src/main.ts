@@ -494,13 +494,15 @@ async function exportPng() {
     const pngName = (name: string) => `${name.trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').replace(/\.png$/i, '') || 'anh-da-chinh'}.png`;
     let filename = pngName(input('project-name').value);
     const picker = (window as SavePickerWindow).showSaveFilePicker;
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const supportsFileShare = isIOS && typeof navigator.share === 'function' && typeof navigator.canShare === 'function';
     let handle: FileSystemFileHandle | undefined;
     busy = true;
     render();
     updateHistoryButtons();
     if (picker) {
       handle = await picker.call(window, { suggestedName: filename, types: [{ description: 'Ảnh PNG', accept: { 'image/png': ['.png'] } }] });
-    } else {
+    } else if (!supportsFileShare) {
       const name = window.prompt('Tên tệp PNG:', filename);
       if (name === null) return;
       filename = pngName(name);
@@ -518,11 +520,20 @@ async function exportPng() {
       catch (error) { await writable.abort().catch(() => {}); throw error; }
       notify(`Đã lưu ${handle.name}.`);
     } else {
+      const blob = await (await fetch(url)).blob();
+      const file = new File([blob], filename, { type: 'image/png' });
+      if (supportsFileShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: filename.replace(/\.png$/i, '') });
+        notify('Trong menu chia sẻ, chọn Lưu hình ảnh để lưu vào Ảnh.');
+        return;
+      }
       const link = document.createElement('a');
       link.download = filename;
       link.href = url;
       link.click();
-      notify('Đã tải PNG. Thư mục lưu theo thiết lập tải xuống của trình duyệt.');
+      notify(isIOS
+        ? 'Đã tải PNG. Mở Tệp > Tải về hoặc vị trí tải xuống đã chọn trong Safari.'
+        : 'Đã tải PNG. Thư mục lưu theo thiết lập tải xuống của trình duyệt.');
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return;

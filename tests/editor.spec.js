@@ -46,6 +46,25 @@ async function exportedImage(page, targetColor) {
   }, { data, targetColor });
 }
 
+test('iPhone Home Screen installation metadata and icons', async ({ page, request }) => {
+  await page.goto('/');
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/icons/apple-touch-icon.png');
+  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+
+  const manifestResponse = await request.get('/manifest.webmanifest');
+  expect(manifestResponse).toBeOK();
+  const manifest = await manifestResponse.json();
+  expect(manifest).toMatchObject({ name: 'Lớp - Chỉnh ảnh', short_name: 'Lớp', display: 'standalone' });
+
+  for (const [path, size] of [['/icons/apple-touch-icon.png', 180], ['/icons/icon-192.png', 192], ['/icons/icon-512.png', 512]]) {
+    const iconResponse = await request.get(path);
+    expect(iconResponse).toBeOK();
+    expect(iconResponse.headers()['content-type']).toContain('image/png');
+    expect(Buffer.from(await iconResponse.body()).readUInt32BE(16)).toBe(size);
+  }
+});
+
 test('upload, overlay order, undo, redo and full-size PNG pixels', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
@@ -402,6 +421,28 @@ test('cancel picker does not download; fallback asks filename and supports cance
   await page.locator('#export').click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe('ảnh tôi muốn lưu.png');
+  await expect(page.locator('#toast')).toHaveText('Đã tải PNG. Thư mục lưu theo thiết lập tải xuống của trình duyệt.');
+});
+
+test('iPhone export shares a PNG so it can be saved to Photos', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#add-text').click();
+  await page.locator('#project-name').fill('Ảnh iPhone');
+  await page.evaluate(() => {
+    Object.defineProperty(window, 'showSaveFilePicker', { configurable: true, value: undefined });
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' });
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: data => Array.isArray(data.files) && data.files[0]?.type === 'image/png' });
+    Object.defineProperty(navigator, 'share', { configurable: true, value: async data => { window.sharedData = data; } });
+  });
+
+  await page.locator('#export').click();
+  await expect(page.locator('#toast')).toHaveText('Trong menu chia sẻ, chọn Lưu hình ảnh để lưu vào Ảnh.');
+  const shared = await page.evaluate(async () => {
+    const file = window.sharedData.files[0];
+    const bitmap = await createImageBitmap(file);
+    return { name: file.name, type: file.type, width: bitmap.width, height: bitmap.height, title: window.sharedData.title };
+  });
+  expect(shared).toEqual({ name: 'Ảnh iPhone.png', type: 'image/png', width: 1200, height: 800, title: 'Ảnh iPhone' });
 });
 
 test('trim transparent image borders preserves transformed content, soft alpha and history', async ({ page }) => {
