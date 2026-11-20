@@ -1,17 +1,22 @@
-import { ActiveSelection, Canvas, FabricImage, FabricObject, Point, Textbox, util } from 'fabric';
+import { ActiveSelection, Canvas, FabricImage, FabricObject, PencilBrush, Point, Textbox, filters, util } from 'fabric';
 import { createIcons, icons } from 'lucide';
 import { editImageBackground } from './background-editor';
+import { HighlightsShadows } from './highlights-shadows-filter';
 import { cropRgba, extractAlpha, findVisibleBounds } from './mask';
 import './style.css';
 
-type Layer = FabricObject & { layerName?: string };
+type ImageAdjustments = { brightness: number; highlights: number; shadows: number; contrast: number; saturation: number };
+type AdjustmentKey = keyof ImageAdjustments;
+type Layer = FabricObject & { layerName?: string; imageAdjustments?: ImageAdjustments };
 type Alignment = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'center-both';
 const alignments: Alignment[] = ['left', 'center', 'right', 'top', 'middle', 'bottom', 'center-both'];
+const adjustmentDefaults: ImageAdjustments = { brightness: 0, highlights: 0, shadows: 0, contrast: 0, saturation: 0 };
+const adjustmentKeys: AdjustmentKey[] = ['brightness', 'highlights', 'shadows', 'contrast', 'saturation'];
 type Snapshot = { scene: object; width: number; height: number; name: string };
 type SavePickerWindow = Window & {
   showSaveFilePicker?: (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle>;
 };
-FabricObject.customProperties = ['layerName'];
+FabricObject.customProperties = ['layerName', 'imageAdjustments'];
 FabricObject.ownDefaults = { ...FabricObject.ownDefaults, cornerColor: '#087f69', borderColor: '#087f69', cornerStrokeColor: '#ffffff', cornerSize: 10, transparentCorners: false, padding: 3 };
 
 const icon = (name: string) => `<i data-lucide="${name}"></i>`;
@@ -24,7 +29,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <button id="export" class="button primary">${icon('download')}<span>Tải PNG</span></button>
   </header>
   <nav class="toolbar" aria-label="Công cụ chỉnh ảnh">
-    <div class="tool-group"><button id="upload" class="button" aria-label="Thêm ảnh" title="Thêm ảnh">${icon('image-plus')}<span>Thêm ảnh</span></button><button id="paste" class="button" aria-label="Dán ảnh hoặc chữ" title="Dán ảnh hoặc chữ">${icon('clipboard-paste')}<span>Dán</span></button><button id="add-text" class="button" aria-label="Thêm chữ" title="Thêm chữ">${icon('type')}<span>Thêm chữ</span></button></div>
+    <div class="tool-group"><button id="upload" class="button" aria-label="Thêm ảnh" title="Thêm ảnh">${icon('image-plus')}<span>Thêm ảnh</span></button><button id="paste" class="button" aria-label="Dán ảnh hoặc chữ" title="Dán ảnh hoặc chữ">${icon('clipboard-paste')}<span>Dán</span></button><button id="add-text" class="button" aria-label="Thêm chữ" title="Thêm chữ">${icon('type')}<span>Thêm chữ</span></button><button id="draw" class="button" type="button" aria-label="Vẽ tự do" aria-pressed="false" title="Vẽ tự do">${icon('pencil')}<span>Vẽ</span></button></div>
     <div class="tool-group history-tools">${tool('undo', 'undo-2', 'Hoàn tác (Ctrl+Z)')}${tool('redo', 'redo-2', 'Làm lại (Ctrl+Shift+Z)')}<span class="toolbar-divider"></span>${tool('duplicate', 'copy', 'Nhân bản lớp (Ctrl+D)')}${tool('delete', 'trash-2', 'Xóa lớp (Delete)')}</div>
     <div class="mobile-tabs">${tool('show-layers', 'layers', 'Danh sách lớp')}${tool('show-properties', 'sliders-horizontal', 'Thuộc tính')}</div>
   </nav>
@@ -53,9 +58,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div id="nothing-selected" class="nothing-selected">${icon('mouse-pointer-2')}<p>Chưa chọn đối tượng</p></div>
       <div id="properties" hidden>
         <section class="property-section"><label>Tên lớp<input id="layer-name" type="text" maxlength="100" /></label><div class="two-fields"><label>X<input id="pos-x" type="number" /></label><label>Y<input id="pos-y" type="number" /></label></div><div class="two-fields"><label>Rộng <span>px</span><input id="obj-width" type="number" min="1" /></label><label>Cao <span>px</span><input id="obj-height" type="number" min="1" /></label></div><label>Xoay <span>°</span><input id="rotation" type="number" min="-360" max="360" /></label><label class="range-label">Độ trong suốt <output id="opacity-value">100%</output><input id="opacity" type="range" min="0" max="100" value="100" /></label></section>
-        <section id="image-properties" class="property-section" hidden><h2>Tách nền</h2><button id="remove-background" class="button background-tool" type="button">${icon('wand-sparkles')} Tách nền AI</button><p class="background-tool-note">Tách nền, dùng cọ/Magic tinh chỉnh và áp dụng trực tiếp vào lớp ảnh.</p><button id="trim-transparent" class="button background-tool" type="button">${icon('crop')} Bỏ viền trong suốt</button><p class="background-tool-note">Cắt vùng trong suốt thừa quanh lớp ảnh, giữ nguyên vị trí nội dung và khung ảnh.</p></section>
+        <section id="image-properties" class="property-section" hidden><h2>Điều chỉnh ảnh</h2><label class="range-label">Độ sáng <output id="brightness-value">0</output><input id="brightness" type="range" min="-100" max="100" value="0" /></label><label class="range-label">Vùng sáng <output id="highlights-value">0</output><input id="highlights" type="range" min="-100" max="100" value="0" /></label><label class="range-label">Vùng tối <output id="shadows-value">0</output><input id="shadows" type="range" min="-100" max="100" value="0" /></label><label class="range-label">Tương phản <output id="contrast-value">0</output><input id="contrast" type="range" min="-100" max="100" value="0" /></label><label class="range-label">Bão hòa <output id="saturation-value">0</output><input id="saturation" type="range" min="-100" max="100" value="0" /></label><button id="reset-adjustments" class="button adjustment-reset" type="button">${icon('rotate-ccw')} Đặt lại điều chỉnh</button><h2 class="image-tools-heading">Tách nền</h2><button id="remove-background" class="button background-tool" type="button">${icon('wand-sparkles')} Tách nền AI</button><p class="background-tool-note">Tách nền, dùng cọ/Magic tinh chỉnh và áp dụng trực tiếp vào lớp ảnh.</p><button id="trim-transparent" class="button background-tool" type="button">${icon('crop')} Bỏ viền trong suốt</button><p class="background-tool-note">Cắt vùng trong suốt thừa quanh lớp ảnh, giữ nguyên vị trí nội dung và khung ảnh.</p></section>
         <section id="text-properties" class="property-section" hidden><h2>Văn bản</h2><label>Nội dung<textarea id="text-content" rows="3"></textarea></label><label>Phông chữ<select id="font-family"><option value="Arial, Helvetica, sans-serif">Arial</option><option value="Verdana, Geneva, sans-serif">Verdana</option><option value="Tahoma, Geneva, sans-serif">Tahoma</option><option value="'Trebuchet MS', sans-serif">Trebuchet MS</option><option value="Georgia, serif">Georgia</option><option value="'Times New Roman', Times, serif">Times New Roman</option><option value="'Palatino Linotype', 'Book Antiqua', Palatino, serif">Palatino</option><option value="'Courier New', Courier, monospace">Courier New</option><option value="'Lucida Console', Monaco, monospace">Lucida Console</option><option value="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif">Impact</option><option value="system-ui, sans-serif">System UI</option><option value="ui-serif, Georgia, serif">UI Serif</option><option value="ui-monospace, 'Courier New', monospace">UI Monospace</option></select></label><div class="two-fields"><label>Cỡ chữ<input id="font-size" type="number" min="1" max="1000" /></label><label>Màu chữ<input id="text-color" type="color" value="#172b29" /></label></div><label>Mã màu HEX<input id="text-hex" type="text" value="#172b29" placeholder="#172b29" spellcheck="false" autocomplete="off" aria-label="Mã màu HEX" /></label><div class="text-tools">${tool('bold', 'bold', 'Chữ đậm')}${tool('italic', 'italic', 'Chữ nghiêng')}${tool('underline', 'underline', 'Gạch chân')}<span class="toolbar-divider"></span>${tool('align-left', 'align-left', 'Căn trái')}${tool('align-center', 'align-center', 'Căn giữa')}${tool('align-right', 'align-right', 'Căn phải')}</div></section>
       </div>
+      <section id="drawing-tools" class="property-section drawing-tools" hidden><h2>Cọ vẽ</h2><label>Màu cọ<input id="brush-color" type="color" value="#e13b37" /></label><label class="range-label">Kích thước <output id="brush-width-value">8 px</output><input id="brush-width" type="range" min="1" max="80" value="8" /></label><p class="background-tool-note">Mỗi nét vẽ được thêm thành một lớp riêng.</p></section>
       <div class="panel-bottom"><span class="status-dot"></span><span id="status" role="status" aria-live="polite">Sẵn sàng chỉnh ảnh</span></div>
     </aside>
   </main>
@@ -71,6 +77,7 @@ const refreshIcons = () => {
   document.querySelectorAll('svg[data-lucide]').forEach(svg => svg.removeAttribute('data-lucide'));
 };
 const canvas = new Canvas('canvas', { width: 1200, height: 800, preserveObjectStacking: true, selection: false });
+canvas.freeDrawingBrush = new PencilBrush(canvas);
 let documentWidth = 1200;
 let documentHeight = 800;
 let zoom = 1;
@@ -139,6 +146,58 @@ function setZoom(value: number) {
 function fit() {
   const viewport = element('viewport');
   setZoom(Math.min((viewport.clientWidth - 64) / documentWidth, (viewport.clientHeight - 64) / documentHeight, 1));
+}
+function readImageAdjustments(object: Layer): ImageAdjustments {
+  return { ...adjustmentDefaults, ...object.imageAdjustments };
+}
+function applyImageAdjustments(object: FabricImage) {
+  const values = readImageAdjustments(object as Layer);
+  const imageFilters: FabricImage['filters'] = [];
+  if (values.brightness) imageFilters.push(new filters.Brightness({ brightness: values.brightness / 100 }));
+  if (values.contrast) imageFilters.push(new filters.Contrast({ contrast: values.contrast / 100 }));
+  if (values.saturation) imageFilters.push(new filters.Saturation({ saturation: values.saturation / 100 }));
+  if (values.highlights || values.shadows) {
+    imageFilters.push(new HighlightsShadows({ highlights: values.highlights / 100, shadows: values.shadows / 100 }));
+  }
+  object.filters = imageFilters;
+  object.applyFilters();
+}
+function setImageAdjustment(key: AdjustmentKey, value: number, save: boolean) {
+  const object = active();
+  if (!(object instanceof FabricImage) || busy || !object.selectable) return;
+  (object as FabricImage & Layer).imageAdjustments = { ...readImageAdjustments(object as Layer), [key]: value };
+  applyImageAdjustments(object);
+  canvas.requestRenderAll();
+  if (save) record();
+  render();
+}
+function resetImageAdjustments() {
+  const object = active();
+  if (!(object instanceof FabricImage) || busy || !object.selectable) return;
+  (object as FabricImage & Layer).imageAdjustments = { ...adjustmentDefaults };
+  applyImageAdjustments(object);
+  canvas.requestRenderAll();
+  record();
+  render();
+}
+function setDrawingMode(enabled: boolean) {
+  if (busy) return;
+  if (enabled && !canvas.getObjects().length) {
+    notify('Thêm ảnh vào khung trước khi vẽ.');
+    return;
+  }
+  canvas.isDrawingMode = enabled;
+  const brush = canvas.freeDrawingBrush;
+  if (brush) {
+    brush.color = input('brush-color').value;
+    brush.width = input('brush-width').valueAsNumber;
+  }
+  if (enabled) {
+    canvas.discardActiveObject();
+    if (window.innerWidth < 1050) document.body.dataset.panel = 'properties';
+  }
+  input('draw').setAttribute('aria-pressed', String(enabled));
+  render();
 }
 function renderLayers() {
   const container = element('layers');
@@ -221,8 +280,12 @@ function renderProperties() {
   input('duplicate').disabled = objects.length !== 1 || busy;
   input('delete').disabled = objects.length === 0 || busy;
   element('image-properties').hidden = !(object instanceof FabricImage);
+  element('drawing-tools').hidden = !canvas.isDrawingMode;
   (element('remove-background') as HTMLButtonElement).disabled = !(object instanceof FabricImage) || busy || !object.selectable;
   element<HTMLButtonElement>('trim-transparent').disabled = !(object instanceof FabricImage) || busy || !object.selectable;
+  input('reset-adjustments').disabled = !(object instanceof FabricImage) || busy || !object.selectable;
+  input('brush-color').disabled = busy;
+  input('brush-width').disabled = busy;
   for (const id of ['raise', 'lower']) input(id).disabled = objects.length !== 1 || busy;
   const alignToCanvas = element<HTMLSelectElement>('alignment-target').value === 'canvas';
   for (const alignment of alignments) {
@@ -238,6 +301,13 @@ function renderProperties() {
   for (const [id, value] of Object.entries(values)) if (document.activeElement !== element(id)) input(id).value = String(value);
   element('opacity-value').textContent = `${Math.round(object.opacity * 100)}%`;
   element('text-properties').hidden = !isText(object);
+  if (object instanceof FabricImage) {
+    const values = readImageAdjustments(object);
+    for (const key of adjustmentKeys) {
+      if (document.activeElement !== input(key)) input(key).value = String(values[key]);
+      element(`${key}-value`).textContent = String(values[key]);
+    }
+  }
   if (isText(object)) {
     const textValues = { 'text-content': object.text, 'font-family': object.fontFamily, 'font-size': String(object.fontSize), 'text-color': String(object.fill), 'text-hex': String(object.fill) };
     for (const [id, value] of Object.entries(textValues)) if (document.activeElement !== element(id)) input(id).value = value;
@@ -261,7 +331,8 @@ function render() {
   element('dimensions').textContent = `${documentWidth} × ${documentHeight} px`;
   element('document-label').textContent = input('project-name').value || 'Ảnh chưa đặt tên';
   input('export').disabled = empty || busy;
-  element('status').textContent = busy ? 'Đang xử lý...' : 'Sẵn sàng chỉnh ảnh';
+  input('draw').disabled = empty || busy;
+  element('status').textContent = busy ? 'Đang xử lý...' : canvas.isDrawingMode ? 'Đang vẽ' : 'Sẵn sàng chỉnh ảnh';
   refreshIcons();
 }
 function changeObject(update: (object: Layer) => void, save = true) {
@@ -327,6 +398,7 @@ async function importImages(files: File[]) {
         await persistentImage.decode();
         image.setElement(persistentImage);
         (image as Layer).layerName = file.name || `Ảnh ${canvas.getObjects().length + 1}`;
+        (image as FabricImage & Layer).imageAdjustments = { ...adjustmentDefaults };
         canvas.add(image);
         canvas.setActiveObject(image);
       } finally { URL.revokeObjectURL(url); }
@@ -400,6 +472,7 @@ async function editSelectedBackground() {
     processedImage.src = imageUrl;
     await processedImage.decode();
     object.setElement(processedImage);
+    applyImageAdjustments(object);
     object.setCoords();
     canvas.setActiveObject(object);
     canvas.requestRenderAll();
@@ -447,6 +520,7 @@ async function trimSelectedImage() {
     image.src = source.toDataURL('image/png');
     await image.decode();
     object.setElement(image);
+    applyImageAdjustments(object);
     object.set({ cropX: 0, cropY: 0 });
     object.setPositionByOrigin(croppedCenter, 'center', 'center');
     object.setCoords();
@@ -474,6 +548,20 @@ function remove() {
 }
 on('remove-background', () => { void editSelectedBackground(); });
 on('trim-transparent', () => { void trimSelectedImage(); });
+on('draw', () => { setDrawingMode(!canvas.isDrawingMode); });
+on('reset-adjustments', resetImageAdjustments);
+for (const key of adjustmentKeys) {
+  input(key).addEventListener('input', () => setImageAdjustment(key, input(key).valueAsNumber, false));
+  input(key).addEventListener('change', () => setImageAdjustment(key, input(key).valueAsNumber, true));
+}
+input('brush-color').addEventListener('input', () => {
+  if (canvas.freeDrawingBrush) canvas.freeDrawingBrush.color = input('brush-color').value;
+});
+input('brush-width').addEventListener('input', () => {
+  const width = input('brush-width').valueAsNumber;
+  if (canvas.freeDrawingBrush) canvas.freeDrawingBrush.width = width;
+  element('brush-width-value').textContent = `${width} px`;
+});
 async function duplicate() {
   const objects = selectedObjects();
   const object = objects.length === 1 ? objects[0] : undefined;
@@ -682,7 +770,7 @@ document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); void restore(1); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') { event.preventDefault(); void duplicate(); }
   if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); remove(); }
-  if (event.key === 'Escape') { selectionAnchorIndex = -1; canvas.discardActiveObject(); canvas.requestRenderAll(); render(); document.body.dataset.panel = ''; }
+  if (event.key === 'Escape') { selectionAnchorIndex = -1; if (canvas.isDrawingMode) setDrawingMode(false); canvas.discardActiveObject(); canvas.requestRenderAll(); render(); document.body.dataset.panel = ''; }
   const offsets: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
   if (offsets[event.key] && active()) {
     event.preventDefault();
@@ -695,6 +783,11 @@ canvas.on('selection:created', render);
 canvas.on('selection:updated', render);
 canvas.on('selection:cleared', render);
 canvas.on('object:modified', () => { record(); render(); });
+canvas.on('path:created', ({ path }) => {
+  (path as Layer).layerName = 'Nét vẽ';
+  record();
+  render();
+});
 canvas.on('text:changed', () => { renderProperties(); });
 canvas.on('text:editing:exited', () => { record(); render(); });
 new ResizeObserver(fit).observe(viewport);
