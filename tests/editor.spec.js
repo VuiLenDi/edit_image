@@ -20,6 +20,14 @@ async function upload(page, name, color, width, height) {
   await expect(page.locator('.layer-caption strong').filter({ hasText: name })).toBeVisible();
 }
 
+async function setRange(page, selector, value) {
+  await page.locator(selector).evaluate((element, nextValue) => {
+    element.value = String(nextValue);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+}
+
 async function exportedImage(page, targetColor) {
   await page.evaluate(() => { window.showSaveFilePicker = undefined; });
   page.once('dialog', dialog => dialog.accept(dialog.defaultValue()));
@@ -83,6 +91,97 @@ test('upload, overlay order, undo, redo and full-size PNG pixels', async ({ page
   await expect(page.locator('#redo')).toBeDisabled();
   expect((await exportedImage(page)).center).toEqual([255, 0, 0, 255]);
   await page.screenshot({ path: 'test-results/desktop.png' });
+});
+
+test('image adjustments are per-layer, tonal, resettable and reversible', async ({ page }) => {
+  await page.goto('/');
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 120;
+    canvas.height = 90;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#808080';
+    context.fillRect(0, 0, 120, 90);
+    context.fillStyle = '#202020';
+    context.fillRect(0, 0, 40, 90);
+    context.fillStyle = '#e0e0e0';
+    context.fillRect(80, 0, 40, 90);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await page.locator('#file-input').setInputFiles({ name: 'tones.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
+  const original = await exportedImage(page);
+  await setRange(page, '#shadows', 80);
+  const shadowsLifted = await exportedImage(page);
+  expect(shadowsLifted.corner[0]).toBeGreaterThan(original.corner[0] + 30);
+  expect(Math.abs(shadowsLifted.bottomRight[0] - original.bottomRight[0])).toBeLessThan(3);
+
+  await setRange(page, '#highlights', 80);
+  const highlightsLifted = await exportedImage(page);
+  expect(highlightsLifted.bottomRight[0]).toBeGreaterThan(shadowsLifted.bottomRight[0] + 5);
+  await expect(page.locator('#undo')).toBeEnabled();
+  await page.locator('#undo').click();
+  await expect(page.locator('#layer-count')).toHaveText('1');
+  await page.locator('.layer-select').click();
+  await expect(page.locator('#highlights')).toHaveValue('0');
+  expect((await exportedImage(page)).bottomRight).toEqual(shadowsLifted.bottomRight);
+  await page.locator('#redo').click();
+  await page.locator('.layer-select').click();
+  await expect(page.locator('#highlights')).toHaveValue('80');
+
+  await setRange(page, '#brightness', 20);
+  await setRange(page, '#contrast', 40);
+  const adjustedBase = await exportedImage(page);
+  expect(adjustedBase.center[0]).not.toBe(128);
+
+  await upload(page, 'overlay.png', '#c08080', 20, 20);
+  for (const id of ['brightness', 'highlights', 'shadows', 'contrast', 'saturation']) {
+    await expect(page.locator(`#${id}`)).toHaveValue('0');
+  }
+  const overlayOriginal = await exportedImage(page);
+  await setRange(page, '#saturation', 100);
+  const overlaySaturated = await exportedImage(page);
+  expect(overlaySaturated.center[0]).toBe(overlayOriginal.center[0]);
+  expect(overlaySaturated.center[1]).toBeLessThan(overlayOriginal.center[1]);
+  expect(overlaySaturated.center[2]).toBeLessThan(overlayOriginal.center[2]);
+
+  await page.locator('.layer-select').nth(1).click();
+  await expect(page.locator('#brightness')).toHaveValue('20');
+  await expect(page.locator('#highlights')).toHaveValue('80');
+  await expect(page.locator('#shadows')).toHaveValue('80');
+  await expect(page.locator('#contrast')).toHaveValue('40');
+  await page.locator('#reset-adjustments').click();
+  for (const id of ['brightness', 'highlights', 'shadows', 'contrast', 'saturation']) {
+    await expect(page.locator(`#${id}`)).toHaveValue('0');
+  }
+  await page.locator('#undo').click();
+  await page.locator('.layer-select').nth(1).click();
+  await expect(page.locator('#brightness')).toHaveValue('20');
+});
+
+test('freehand drawing creates editable layers, exports and supports undo', async ({ page }) => {
+  await page.goto('/');
+  await upload(page, 'base.png', '#ffffff', 120, 90);
+  await page.locator('#draw').click();
+  await expect(page.locator('#draw')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#brush-color')).toBeVisible();
+  await page.locator('#brush-color').fill('#ff0000');
+  await setRange(page, '#brush-width', 12);
+  const canvas = await page.locator('#canvas').boundingBox();
+  await page.mouse.move(canvas.x + canvas.width * 0.15, canvas.y + canvas.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + canvas.width * 0.85, canvas.y + canvas.height / 2, { steps: 15 });
+  await page.mouse.up();
+
+  await expect(page.locator('#layer-count')).toHaveText('2');
+  await expect(page.locator('.layer-caption strong').filter({ hasText: 'Nét vẽ' })).toBeVisible();
+  expect((await exportedImage(page)).center).toEqual([255, 0, 0, 255]);
+  await page.locator('#undo').click();
+  await expect(page.locator('#layer-count')).toHaveText('1');
+  await page.locator('#redo').click();
+  await expect(page.locator('#layer-count')).toHaveText('2');
+  expect((await exportedImage(page)).center).toEqual([255, 0, 0, 255]);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#draw')).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('clipboard image, text formatting, visibility, lock, duplicate and delete', async ({ page }) => {
