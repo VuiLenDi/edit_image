@@ -490,6 +490,7 @@ async function duplicate() {
 }
 async function exportPng() {
   if (busy || !canvas.getObjects().length) return;
+  let exportStage = 'chuẩn bị ảnh';
   try {
     const pngName = (name: string) => `${name.trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').replace(/\.png$/i, '') || 'anh-da-chinh'}.png`;
     let filename = pngName(input('project-name').value);
@@ -501,6 +502,7 @@ async function exportPng() {
     render();
     updateHistoryButtons();
     if (picker) {
+      exportStage = 'mở hộp chọn nơi lưu';
       handle = await picker.call(window, { suggestedName: filename, types: [{ description: 'Ảnh PNG', accept: { 'image/png': ['.png'] } }] });
     } else if (!supportsFileShare) {
       const name = window.prompt('Tên tệp PNG:', filename);
@@ -510,13 +512,21 @@ async function exportPng() {
     const previewZoom = zoom;
     let url: string;
     try {
+      exportStage = 'tạo ảnh PNG';
       setZoom(1);
       url = canvas.toDataURL({ format: 'png', multiplier: 1, enableRetinaScaling: false, width: documentWidth, height: documentHeight });
     } finally { setZoom(previewZoom); }
     if (handle) {
+      exportStage = 'tạo dữ liệu PNG';
       const blob = await (await fetch(url)).blob();
+      exportStage = 'mở tệp để ghi';
       const writable = await handle.createWritable();
-      try { await writable.write(blob); await writable.close(); }
+      try {
+        exportStage = 'ghi dữ liệu PNG';
+        await writable.write(blob);
+        exportStage = 'đóng tệp sau khi ghi';
+        await writable.close();
+      }
       catch (error) { await writable.abort().catch(() => {}); throw error; }
       notify(`Đã lưu ${handle.name}.`);
     } else {
@@ -536,7 +546,11 @@ async function exportPng() {
         : 'Đã tải PNG. Thư mục lưu theo thiết lập tải xuống của trình duyệt.');
     }
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') return;
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.warn(`Xuất PNG bị hủy ở bước "${exportStage}".`, error);
+      notify(`Chưa lưu PNG: thao tác bị hủy ở bước "${exportStage}". Kiểm tra Console để xem lỗi chi tiết.`);
+      return;
+    }
     notify('Không thể lưu PNG. Hãy kiểm tra quyền lưu tệp hoặc thử trình duyệt Chrome/Edge.');
   } finally { busy = false; render(); updateHistoryButtons(); }
 }
