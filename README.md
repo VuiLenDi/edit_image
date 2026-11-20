@@ -91,6 +91,7 @@ Upload assets trước `index.html`; không xóa assets cũ để các phiên đ
 - Các lớp chỉ tồn tại trong phiên hiện tại. Hãy tải PNG trước khi đóng hoặc tải lại trang. PNG là ảnh đã gộp lớp, không phải tệp dự án có thể sửa từng lớp.
 - Nút đọc clipboard cần localhost hoặc HTTPS và quyền trình duyệt. Khi không được cấp quyền, dùng Ctrl+V / Cmd+V.
 - Khi tải PNG trên trình duyệt hỗ trợ File System Access (như Chrome/Edge), hộp lưu cho phép chọn thư mục và tên tệp. Cần localhost hoặc HTTPS. Hủy hộp lưu sẽ không tải ảnh.
+- **Lỗi picker trên Chrome 157.0.8103.52:** đã quan sát `showSaveFilePicker()` trả `AbortError` và không tạo tệp khi cửa sổ Chrome ở kích thước lớn/toàn màn hình; khôi phục và thu nhỏ cửa sổ rồi thử lại có thể cho phép lưu. Khi picker bị hủy trước khi trả file handle, ứng dụng chưa thể ghi PNG. Tham khảo [Chromium issue 582407452](https://issues.chromium.org/issues/582407452); issue công khai đề cập `showDirectoryPicker()`, nên mối liên hệ với `showSaveFilePicker()` chưa được xác nhận độc lập.
 - Trình duyệt không hỗ trợ hộp lưu (như Firefox/Safari) sẽ hỏi tên tệp rồi tải xuống. Thư mục lưu do cài đặt tải xuống của trình duyệt quyết định; website không thể tự mở hộp chọn thư mục trên các trình duyệt này.
 - Hỗ trợ PNG, JPEG, WebP, GIF, AVIF, BMP theo khả năng giải mã của trình duyệt. GIF được nhập thành ảnh tĩnh. Giới hạn mỗi tệp 30 MB, mỗi chiều 8192 px, tổng 32 triệu pixel.
 
@@ -101,4 +102,6 @@ npx playwright install chromium
 npm test
 ```
 
-13 kiểm thử bao gồm upload, clipboard ảnh/chữ, hex, thứ tự lớp bằng pixel PNG, canh lớp theo vùng chọn và khung ảnh, cắt viền trong suốt và bảo toàn pixel gốc/vị trí nội dung khi lớp đã co giãn/xoay, kích thước xuất ở mức zoom khác nhau, chữ tiếng Việt, định dạng, nhân bản/xóa/ẩn/khóa, lịch sử, nền trong suốt, giao diện điện thoại và công cụ mặt nạ tách nền. Hộp lưu hệ điều hành được mô phỏng để xác nhận tham số, dữ liệu PNG được ghi, đóng tệp và hủy lưu; luồng tải xuống dự phòng kiểm tra tên tệp thực tế.
+Để kiểm tra hộp lưu native trên Chrome Stable có giao diện, chạy `npm run test:chrome`. Test tự chọn ảnh rồi mở hộp lưu thật; người dùng cần chọn vị trí và bấm **Lưu** trong Chrome. Lệnh này cần Chrome được cài đặt và môi trường có giao diện desktop.
+
+Playwright suite mặc định có 15 kiểm thử, bao gồm upload, clipboard ảnh/chữ, hex, thứ tự lớp bằng pixel PNG, canh lớp theo vùng chọn và khung ảnh, cắt viền trong suốt và bảo toàn pixel gốc/vị trí nội dung khi lớp đã co giãn/xoay, kích thước xuất ở mức zoom khác nhau, chữ tiếng Việt, định dạng, nhân bản/xóa/ẩn/khóa, lịch sử, nền trong suốt, giao diện điện thoại và công cụ mặt nạ tách nền. Hộp lưu trong suite mặc định được mô phỏng để xác nhận tham số, dữ liệu PNG được ghi, đóng tệp và hủy lưu; luồng tải xuống dự phòng kiểm tra tên tệp thực tế.

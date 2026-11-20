@@ -366,9 +366,9 @@ test('paste button reads plain text as a new layer', async ({ page, context }) =
   await expect(page.locator('#layer-count')).toHaveText('1');
 });
 
-test('save picker receives suggested filename and writes a full-size PNG', async ({ page }) => {
+test('select an image, confirm PNG save, and write a full-size PNG', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#add-text').click();
+  await upload(page, 'source.png', '#ff0000', 160, 90);
   await page.locator('#project-name').fill('Thiết kế mới');
   await page.evaluate(() => {
     window.showSaveFilePicker = async options => {
@@ -392,16 +392,15 @@ test('save picker receives suggested filename and writes a full-size PNG', async
     canvas.height = bitmap.height;
     const context = canvas.getContext('2d');
     context.drawImage(bitmap, 0, 0);
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    const hasContent = pixels.some((value, index) => index % 4 === 3 && value > 0);
-    return { options: window.saveOptions, width: bitmap.width, height: bitmap.height, mime: window.savedBlob.type, closed: window.saveClosed, hasContent };
+    const center = [...context.getImageData(Math.floor(bitmap.width / 2), Math.floor(bitmap.height / 2), 1, 1).data];
+    return { options: window.saveOptions, width: bitmap.width, height: bitmap.height, mime: window.savedBlob.type, closed: window.saveClosed, center };
   });
-  expect(saved).toMatchObject({ options: { suggestedName: 'Thiết kế mới.png', types: [{ accept: { 'image/png': ['.png'] } }] }, width: 1200, height: 800, mime: 'image/png', closed: true, hasContent: true });
+  expect(saved).toMatchObject({ options: { suggestedName: 'Thiết kế mới.png', types: [{ accept: { 'image/png': ['.png'] } }] }, width: 160, height: 90, mime: 'image/png', closed: true, center: [255, 0, 0, 255] });
   await expect(page.locator('#zoom-label')).toHaveText(previousZoom);
   await expect(page.locator('#export')).toBeEnabled();
 });
 
-test('cancel picker does not download; fallback asks filename and supports cancel', async ({ page }) => {
+test('cancel picker reports cancellation without downloading; fallback supports cancel', async ({ page }) => {
   await page.goto('/');
   await page.locator('#add-text').click();
   const downloads = [];
@@ -410,6 +409,7 @@ test('cancel picker does not download; fallback asks filename and supports cance
   await page.locator('#export').click();
   await expect(page.locator('#export')).toBeEnabled();
   await expect(page.locator('#status')).toHaveText('Sẵn sàng chỉnh ảnh');
+  await expect(page.locator('#toast')).toHaveText('Chưa lưu PNG: thao tác bị hủy ở bước "mở hộp chọn nơi lưu". Kiểm tra Console để xem lỗi chi tiết.');
   expect(downloads).toEqual([]);
   await page.evaluate(() => { window.showSaveFilePicker = undefined; });
   page.once('dialog', dialog => dialog.dismiss());
