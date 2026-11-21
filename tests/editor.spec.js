@@ -93,6 +93,53 @@ test('upload, overlay order, undo, redo and full-size PNG pixels', async ({ page
   await page.screenshot({ path: 'test-results/desktop.png' });
 });
 
+test('merge selected layers into one raster layer with undo and redo', async ({ page }) => {
+  await page.goto('/');
+  await upload(page, 'base.png', '#ff0000', 100, 100);
+  await upload(page, 'overlay.png', '#0000ff', 100, 100);
+  await expect(page.locator('#merge-layers')).toBeDisabled();
+  await page.locator('.layer-select').nth(1).click({ modifiers: ['Control'] });
+  await expect(page.locator('#merge-layers')).toBeEnabled();
+  const before = await exportedImage(page);
+
+  await page.locator('#merge-layers').click();
+  await expect(page.locator('#layer-count')).toHaveText('1');
+  await expect(page.locator('.layer-caption strong')).toHaveText('Đã gộp 2 lớp');
+  const merged = await exportedImage(page);
+  expect(merged.center).toEqual(before.center);
+  expect(merged.corner).toEqual(before.corner);
+
+  await page.locator('#undo').click();
+  await expect(page.locator('#layer-count')).toHaveText('2');
+  expect((await exportedImage(page)).center).toEqual(before.center);
+  await page.locator('#redo').click();
+  await expect(page.locator('#layer-count')).toHaveText('1');
+  expect((await exportedImage(page)).center).toEqual(merged.center);
+});
+
+test('dragging a layer row reorders the stack and supports undo', async ({ page }) => {
+  await page.goto('/');
+  await upload(page, 'base.png', '#ff0000', 100, 100);
+  await upload(page, 'middle.png', '#0000ff', 100, 100);
+  await upload(page, 'top.png', '#00ff00', 100, 100);
+  expect(await page.locator('.layer-row').evaluateAll(rows => rows.map(row => row.querySelector('strong').textContent))).toEqual(['top.png', 'middle.png', 'base.png']);
+  expect((await exportedImage(page)).center).toEqual([0, 255, 0, 255]);
+  const sourceHandle = await page.locator('.layer-row').nth(0).locator('.layer-drag-handle').boundingBox();
+  const targetRow = await page.locator('.layer-row').nth(1).boundingBox();
+  await page.mouse.move(sourceHandle.x + sourceHandle.width / 2, sourceHandle.y + sourceHandle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetRow.x + 15, targetRow.y + targetRow.height * 0.75, { steps: 10 });
+  await page.mouse.up();
+  await expect(page.locator('.layer-caption strong').nth(0)).toHaveText('middle.png');
+  expect((await exportedImage(page)).center).toEqual([0, 0, 255, 255]);
+
+  await page.locator('#undo').click();
+  await expect(page.locator('.layer-caption strong').nth(0)).toHaveText('top.png');
+  expect((await exportedImage(page)).center).toEqual([0, 255, 0, 255]);
+  await page.locator('#redo').click();
+  await expect(page.locator('.layer-caption strong').nth(0)).toHaveText('middle.png');
+});
+
 test('image adjustments are per-layer, tonal, resettable and reversible', async ({ page }) => {
   await page.goto('/');
   const image = await page.evaluate(() => {
