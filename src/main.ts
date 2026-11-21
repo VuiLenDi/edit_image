@@ -1,4 +1,4 @@
-import { ActiveSelection, Canvas, FabricImage, FabricObject, PencilBrush, Point, Textbox, filters, util } from 'fabric';
+import { ActiveSelection, Canvas, FabricImage, FabricObject, PencilBrush, Point, StaticCanvas, Textbox, filters, util } from 'fabric';
 import { createIcons, icons } from 'lucide';
 import { editImageBackground } from './background-editor';
 import { HighlightsShadows } from './highlights-shadows-filter';
@@ -38,7 +38,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="panel-title"><h2>Lớp ảnh</h2><span id="layer-count" class="count">0</span></div>
       <div id="layers" class="layer-list"></div>
       <div id="no-layers" class="no-layers">${icon('layers-2')}<span>Chưa có lớp nào</span></div>
-      <div class="layer-footer">${tool('raise', 'arrow-up', 'Đưa lớp lên trên')}${tool('lower', 'arrow-down', 'Đưa lớp xuống dưới')}<span class="spacer"></span>${tool('add-layer', 'plus', 'Thêm lớp ảnh')}</div>
+      <div class="layer-footer">${tool('raise', 'arrow-up', 'Đưa lớp lên trên')}${tool('lower', 'arrow-down', 'Đưa lớp xuống dưới')}${tool('merge-layers', 'layers-2', 'Gộp các lớp đã chọn')}<span class="spacer"></span>${tool('add-layer', 'plus', 'Thêm lớp ảnh')}</div>
       <section class="layer-alignment" aria-label="Canh chỉnh lớp">
         <label for="alignment-target">Canh theo</label><select id="alignment-target"><option value="selection">Các lớp đang chọn</option><option value="canvas">Khung ảnh</option></select>
         <div class="layer-align-tools">${tool('align-layers-left', 'align-horizontal-justify-start', 'Canh trái các lớp')}${tool('align-layers-center', 'align-horizontal-justify-center', 'Canh giữa ngang các lớp')}${tool('align-layers-right', 'align-horizontal-justify-end', 'Canh phải các lớp')}${tool('align-layers-top', 'align-vertical-justify-start', 'Canh trên các lớp')}${tool('align-layers-middle', 'align-vertical-justify-center', 'Canh giữa dọc các lớp')}${tool('align-layers-bottom', 'align-vertical-justify-end', 'Canh dưới các lớp')}</div>
@@ -86,6 +86,7 @@ let history: Snapshot[] = [];
 let historyIndex = -1;
 let toastTimer: ReturnType<typeof setTimeout>;
 let selectionAnchorIndex = -1;
+let layerDrag: { pointerId: number; source: Layer; sourceRow: HTMLElement; startY: number; started: boolean; target: Layer | null; afterTarget: boolean } | null = null;
 let resizeDrag: { pointerId: number; startX: number; startY: number; startWidth: number; startHeight: number; startZoom: number; axes: string } | null = null;
 const active = () => canvas.getActiveObject() as Layer | undefined;
 const isText = (object: FabricObject | undefined): object is Textbox => object instanceof Textbox;
@@ -204,11 +205,26 @@ function renderLayers() {
   container.replaceChildren();
   const objects = canvas.getObjects() as Layer[];
   const selected = selectedObjects();
+  input('merge-layers').disabled = busy || selected.length < 2 || selected.some(object => !object.visible);
   element('layer-count').textContent = String(objects.length);
   element('no-layers').hidden = objects.length > 0;
   [...objects].reverse().forEach((object, reverseIndex) => {
     const row = document.createElement('div');
     row.className = `layer-row${selected.includes(object) ? ' selected' : ''}${!object.visible ? ' muted' : ''}`;
+    const dragHandle = document.createElement('button');
+    dragHandle.className = 'layer-drag-handle';
+    dragHandle.type = 'button';
+    dragHandle.disabled = busy || !object.selectable;
+    dragHandle.title = 'Kéo để sắp xếp lớp';
+    dragHandle.setAttribute('aria-label', `Kéo để sắp xếp ${object.layerName || 'lớp'}`);
+    dragHandle.innerHTML = icon('grip-vertical');
+    dragHandle.addEventListener('pointerdown', event => {
+      if (busy || !object.selectable) return;
+      event.preventDefault();
+      layerDrag = { pointerId: event.pointerId, source: object, sourceRow: row, startY: event.clientY, started: false, target: null, afterTarget: false };
+      dragHandle.setPointerCapture(event.pointerId);
+    });
+    row.append(dragHandle);
     const select = document.createElement('button');
     select.className = 'layer-select';
     select.type = 'button';
@@ -269,6 +285,109 @@ function renderLayers() {
     row.dataset.index = String(objects.length - 1 - reverseIndex);
     container.append(row);
   });
+}
+function reorderLayer(dragged: Layer, target: Layer, afterTarget: boolean) {
+  if (busy || dragged === target) return;
+  const visualOrder = (canvas.getObjects() as Layer[]).reverse();
+  const previousOrder = [...visualOrder];
+  const sourceIndex = visualOrder.indexOf(dragged);
+  if (sourceIndex < 0 || !visualOrder.includes(target)) return;
+  visualOrder.splice(sourceIndex, 1);
+  const targetIndex = visualOrder.indexOf(target);
+  visualOrder.splice(targetIndex + Number(afterTarget), 0, dragged);
+  if (visualOrder.every((layer, index) => layer === previousOrder[index])) return;
+
+  const selected = selectedObjects();
+  canvas.discardActiveObject();
+  visualOrder.reverse().forEach((layer, index) => canvas.moveObjectTo(layer, index));
+  setSelectedObjects(selected);
+  canvas.requestRenderAll();
+  record();
+  render();
+}
+function clearLayerDrag(drag: NonNullable<typeof layerDrag>) {
+  drag.sourceRow.classList.remove('dragging');
+  document.querySelectorAll('.layer-row.drag-over').forEach(row => row.classList.remove('drag-over', 'drop-before', 'drop-after'));
+}
+window.addEventListener('pointermove', event => {
+  const drag = layerDrag;
+  if (!drag || event.pointerId !== drag.pointerId || busy) return;
+  if (!drag.started && Math.abs(event.clientY - drag.startY) < 4) return;
+  drag.started = true;
+  drag.sourceRow.classList.add('dragging');
+  document.querySelectorAll('.layer-row.drag-over').forEach(row => row.classList.remove('drag-over', 'drop-before', 'drop-after'));
+  const targetRow = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.layer-row');
+  if (!targetRow || targetRow === drag.sourceRow) { drag.target = null; return; }
+  const targetIndex = Number(targetRow.dataset.index);
+  const target = (canvas.getObjects() as Layer[])[targetIndex];
+  if (!target) { drag.target = null; return; }
+  drag.target = target;
+  const bounds = targetRow.getBoundingClientRect();
+  drag.afterTarget = event.clientY > bounds.top + bounds.height / 2;
+  targetRow.classList.add('drag-over', drag.afterTarget ? 'drop-after' : 'drop-before');
+});
+window.addEventListener('pointerup', event => {
+  const drag = layerDrag;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  layerDrag = null;
+  clearLayerDrag(drag);
+  if (drag.started && drag.target) reorderLayer(drag.source, drag.target, drag.afterTarget);
+});
+window.addEventListener('pointercancel', event => {
+  if (!layerDrag || event.pointerId !== layerDrag.pointerId) return;
+  clearLayerDrag(layerDrag);
+  layerDrag = null;
+});
+async function mergeSelectedLayers() {
+  const selected = selectedObjects();
+  if (busy || selected.length < 2) return;
+  if (selected.some(object => !object.visible)) {
+    notify('Hiện các lớp đã chọn trước khi gộp.');
+    return;
+  }
+  const stack = canvas.getObjects() as Layer[];
+  const selectedSet = new Set(selected);
+  const layersToMerge = stack.filter(object => selectedSet.has(object));
+  if (layersToMerge.length < 2) return;
+  const topSelectedIndex = Math.max(...layersToMerge.map(object => stack.indexOf(object)));
+  const insertionIndex = stack.slice(0, topSelectedIndex + 1).filter(object => !selectedSet.has(object)).length;
+  let compositeCanvas: StaticCanvas | undefined;
+  let merged = false;
+
+  busy = true;
+  updateHistoryButtons();
+  canvas.discardActiveObject();
+  render();
+  try {
+    compositeCanvas = new StaticCanvas(undefined, {
+      width: documentWidth,
+      height: documentHeight,
+      enableRetinaScaling: false,
+      renderOnAddRemove: false,
+    });
+    for (const object of layersToMerge) compositeCanvas.add(await object.clone());
+    const mergedImage = await FabricImage.fromURL(compositeCanvas.toDataURL({ format: 'png', multiplier: 1, enableRetinaScaling: false }));
+    mergedImage.set({ originX: 'left', originY: 'top', left: 0, top: 0 });
+    (mergedImage as Layer).layerName = `Đã gộp ${layersToMerge.length} lớp`;
+    (mergedImage as FabricImage & Layer).imageAdjustments = { ...adjustmentDefaults };
+    canvas.remove(...layersToMerge);
+    canvas.add(mergedImage);
+    canvas.moveObjectTo(mergedImage, insertionIndex);
+    canvas.setActiveObject(mergedImage);
+    canvas.requestRenderAll();
+    merged = true;
+    notify(`Đã gộp ${layersToMerge.length} lớp thành một lớp ảnh.`);
+  } catch (error) {
+    console.error(error);
+    setSelectedObjects(selected);
+    notify('Không thể gộp các lớp đã chọn. Hãy thử lại với ít lớp hơn hoặc ảnh nhỏ hơn.');
+  } finally {
+    if (compositeCanvas) await compositeCanvas.dispose();
+    busy = false;
+    if (merged) record();
+    render();
+    updateHistoryButtons();
+  }
 }
 function renderProperties() {
   const objects = selectedObjects();
@@ -652,6 +771,7 @@ input('file-input').addEventListener('change', event => {
 on('add-text', () => addText());
 on('delete', remove);
 on('duplicate', () => { void duplicate(); });
+on('merge-layers', () => { void mergeSelectedLayers(); });
 on('undo', () => { void restore(-1); });
 on('redo', () => { void restore(1); });
 on('export', exportPng);

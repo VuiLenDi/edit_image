@@ -26,3 +26,4 @@
 @media(max-width:430px){.bg-actions .button{padding:8px 7px;font-size:9px}.bg-preview{min-height:34dvh}.bg-stage{min-height:27dvh;max-height:35dvh}}
 .background-editor{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:min(820px,94dvh)}.bg-content{height:100%;max-height:none;overflow:hidden}
 @media(max-width:760px){.background-editor{height:96dvh}.bg-content{overflow:auto}}
+.layer-row.dragging{opacity:.45}.layer-row.drag-over{border-color:var(--accent);background:#e7f3ee}.layer-row.drop-before{border-top:2px solid var(--accent)}.layer-row.drop-after{border-bottom:2px solid var(--accent)}.layer-drag-handle{display:grid;place-items:center;width:16px;flex-shrink:0;color:#91a097;cursor:grab;touch-action:none}.layer-drag-handle svg{width:13px;height:16px}
