@@ -25,7 +25,7 @@ Mở URL được Vite hiển thị trong terminal. Tạo bản production bằn
 - **Thêm ảnh:** tải tệp, kéo thả hoặc dán ảnh từ clipboard. Có thể ghép nhiều ảnh thành các lớp.
 - **Chỉnh sửa lớp:** di chuyển, đổi kích thước, xoay, chỉnh vị trí và độ trong suốt; sắp xếp thứ tự, nhân bản, ẩn, khóa và xóa lớp. Canh trái/giữa/phải hoặc trên/giữa/dưới theo vùng chọn hay theo khung ảnh; canh chỉnh giữ nguyên kích thước, góc xoay và hỗ trợ hoàn tác/làm lại. Phím mũi tên di chuyển lớp; giữ Shift để tăng bước di chuyển.
 - **Sắp xếp và gộp lớp:** kéo thả lớp trong danh sách để đổi thứ tự. Chọn nhiều lớp để gộp thành một lớp ảnh mới; có thể hoàn tác/làm lại thao tác gộp.
-- **Điều chỉnh ảnh:** chỉnh độ sáng, vùng sáng, vùng tối, tương phản và bão hòa riêng cho từng lớp ảnh; đặt lại hoặc hoàn tác/làm lại.
+- **Điều chỉnh ảnh:** chọn preset Gốc, Đen trắng, Sepia, Hoài cổ, Tương phản cao, Ấm, Lạnh hoặc Kịch tính; tinh chỉnh riêng từng lớp với độ sáng, vùng sáng/tối, tương phản, bão hòa, đen trắng, sepia, làm mờ, xoay sắc độ và đảo màu. Độ trong suốt có điều khiển riêng trong thuộc tính lớp. Có thể đặt lại hoặc hoàn tác/làm lại điều chỉnh.
 - **Vẽ tự do:** chọn màu và kích thước cọ. Mỗi nét vẽ là một lớp riêng có thể chọn và chỉnh sửa như các lớp khác.
 - **Thêm chữ:** chỉnh nội dung, phông, cỡ chữ, màu, đậm, nghiêng, gạch chân và căn lề. Ô mã màu HEX nhận mã 3 hoặc 6 chữ số. Có thể dán chữ trên canvas để tạo lớp mới hoặc dán trong ô nội dung để sửa chữ đang chọn.
 - **Tách nền AI:** xử lý ảnh trên thiết bị, tinh chỉnh bằng cọ xóa/khôi phục và Magic, điều chỉnh viền và nền xem trước, rồi áp dụng vào lớp ảnh. Có lịch sử riêng khi tinh chỉnh và lịch sử chung sau khi áp dụng.
@@ -96,4 +96,4 @@ npm test
 
 Chạy `npm run test:chrome` để kiểm tra hộp lưu native trên Chrome Stable; cần Chrome và môi trường desktop có giao diện.
 
-Playwright suite hiện có 21 kiểm thử bao gồm upload, clipboard, chỉnh sửa lớp, điều chỉnh ảnh, vẽ, canh lớp, cắt viền trong suốt, xuất và nén PNG/JPEG/WebP, lịch sử, giao diện di động và tách nền. Hộp lưu được mô phỏng trong suite mặc định; test Chrome kiểm tra hộp lưu native.
+Playwright suite hiện có 22 kiểm thử bao gồm upload, clipboard, chỉnh sửa lớp, điều chỉnh ảnh và preset, vẽ, canh lớp, cắt viền trong suốt, xuất và nén PNG/JPEG/WebP, lịch sử, giao diện di động và tách nền. Hộp lưu được mô phỏng trong suite mặc định; test Chrome kiểm tra hộp lưu native.

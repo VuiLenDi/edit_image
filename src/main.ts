@@ -5,13 +5,32 @@ import { HighlightsShadows } from './highlights-shadows-filter';
 import { cropRgba, extractAlpha, findVisibleBounds } from './mask';
 import './style.css';
 
-type ImageAdjustments = { brightness: number; highlights: number; shadows: number; contrast: number; saturation: number };
+type ImageAdjustments = { brightness: number; highlights: number; shadows: number; contrast: number; saturation: number; grayscale: number; sepia: number; blur: number; hueRotate: number; invert: number };
 type AdjustmentKey = keyof ImageAdjustments;
 type Layer = FabricObject & { layerName?: string; imageAdjustments?: ImageAdjustments };
 type Alignment = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'center-both';
 const alignments: Alignment[] = ['left', 'center', 'right', 'top', 'middle', 'bottom', 'center-both'];
-const adjustmentDefaults: ImageAdjustments = { brightness: 0, highlights: 0, shadows: 0, contrast: 0, saturation: 0 };
-const adjustmentKeys: AdjustmentKey[] = ['brightness', 'highlights', 'shadows', 'contrast', 'saturation'];
+const adjustmentDefaults: ImageAdjustments = { brightness: 0, highlights: 0, shadows: 0, contrast: 0, saturation: 0, grayscale: 0, sepia: 0, blur: 0, hueRotate: 0, invert: 0 };
+const adjustmentKeys: AdjustmentKey[] = ['brightness', 'highlights', 'shadows', 'contrast', 'saturation', 'grayscale', 'sepia', 'blur', 'hueRotate', 'invert'];
+const adjustmentPresets: { id: string; label: string; values: ImageAdjustments }[] = [
+  { id: 'original', label: 'Gốc', values: { ...adjustmentDefaults } },
+  { id: 'grayscale', label: 'Đen trắng', values: { ...adjustmentDefaults, grayscale: 100 } },
+  { id: 'sepia', label: 'Sepia', values: { ...adjustmentDefaults, sepia: 100 } },
+  { id: 'vintage', label: 'Hoài cổ', values: { ...adjustmentDefaults, brightness: 5, shadows: 10, contrast: -12, saturation: -25, sepia: 45 } },
+  { id: 'high-contrast', label: 'Tương phản cao', values: { ...adjustmentDefaults, contrast: 55, saturation: 5 } },
+  { id: 'warm', label: 'Ấm', values: { ...adjustmentDefaults, brightness: 3, saturation: 12, sepia: 18, hueRotate: -8 } },
+  { id: 'cool', label: 'Lạnh', values: { ...adjustmentDefaults, brightness: 2, saturation: 8, hueRotate: 15 } },
+  { id: 'dramatic', label: 'Kịch tính', values: { ...adjustmentDefaults, highlights: 12, shadows: -25, contrast: 38, saturation: -8 } },
+];
+type ColorMatrixValues = [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number];
+const identityColorMatrix: ColorMatrixValues = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+const grayscaleColorMatrix: ColorMatrixValues = [0.2126, 0.7152, 0.0722, 0, 0, 0.2126, 0.7152, 0.0722, 0, 0, 0.2126, 0.7152, 0.0722, 0, 0, 0, 0, 0, 1, 0];
+const sepiaColorMatrix: ColorMatrixValues = [0.393, 0.769, 0.189, 0, 0, 0.349, 0.686, 0.168, 0, 0, 0.272, 0.534, 0.131, 0, 0, 0, 0, 0, 1, 0];
+const invertColorMatrix: ColorMatrixValues = [-1, 0, 0, 0, 1, 0, -1, 0, 0, 1, 0, 0, -1, 0, 1, 0, 0, 0, 1, 0];
+function blendColorMatrix(target: ColorMatrixValues, amount: number): ColorMatrixValues {
+  const blended = target.map((value, index) => identityColorMatrix[index] + (value - identityColorMatrix[index]) * amount);
+  return blended as ColorMatrixValues;
+}
 type Snapshot = { scene: object; width: number; height: number; name: string };
 type SavePickerWindow = Window & {
   showSaveFilePicker?: (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle>;
@@ -64,7 +83,22 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div id="nothing-selected" class="nothing-selected">${icon('mouse-pointer-2')}<p>Chưa chọn đối tượng</p></div>
       <div id="properties" hidden>
         <section class="property-section"><label>Tên lớp<input id="layer-name" type="text" maxlength="100" /></label><div class="two-fields"><label>X<input id="pos-x" type="number" /></label><label>Y<input id="pos-y" type="number" /></label></div><div class="two-fields"><label>Rộng <span>px</span><input id="obj-width" type="number" min="1" /></label><label>Cao <span>px</span><input id="obj-height" type="number" min="1" /></label></div><label>Xoay <span>°</span><input id="rotation" type="number" min="-360" max="360" /></label><label class="range-label">Độ trong suốt <output id="opacity-value">100%</output><input id="opacity" type="range" min="0" max="100" value="100" /></label></section>
-        <section id="image-properties" class="property-section" hidden><h2>Điều chỉnh ảnh</h2><label class="range-label">Độ sáng <output id="brightness-value">0</output><input id="brightness" type="range" min="-100" max="100" value="0" /></label><label class="range-label">Vùng sáng <output id="highlights-value">0</output><input id="highlights" type="range" min="-100" max="100" value="0" /></label><label class="range-label">Vùng tối <output id="shadows-value">0</output><input id="shadows" type="range" min="-100" max="100" value="0" /></label><label class="range-label">Tương phản <output id="contrast-value">0</output><input id="contrast" type="range" min="-100" max="100" value="0" /></label><label class="range-label">Bão hòa <output id="saturation-value">0</output><input id="saturation" type="range" min="-100" max="100" value="0" /></label><button id="reset-adjustments" class="button adjustment-reset" type="button">${icon('rotate-ccw')} Đặt lại điều chỉnh</button><h2 class="image-tools-heading">Tách nền</h2><button id="remove-background" class="button background-tool" type="button">${icon('wand-sparkles')} Tách nền AI</button><p class="background-tool-note">Tách nền, dùng cọ/Magic tinh chỉnh và áp dụng trực tiếp vào lớp ảnh.</p><button id="trim-transparent" class="button background-tool" type="button">${icon('crop')} Bỏ viền trong suốt</button><p class="background-tool-note">Cắt vùng trong suốt thừa quanh lớp ảnh, giữ nguyên vị trí nội dung và khung ảnh.</p></section>
+        <section id="image-properties" class="property-section" hidden>
+          <h2>Điều chỉnh ảnh</h2>
+          <div class="adjustment-presets"><h3>Preset</h3><div id="image-presets" class="preset-list">${adjustmentPresets.map(preset => `<button class="preset-button" type="button" data-preset="${preset.id}" aria-pressed="false">${preset.label}</button>`).join('')}</div></div>
+          <label class="range-label">Độ sáng <output id="brightness-value">0</output><input id="brightness" type="range" min="-100" max="100" value="0" /></label>
+          <label class="range-label">Vùng sáng <output id="highlights-value">0</output><input id="highlights" type="range" min="-100" max="100" value="0" /></label>
+          <label class="range-label">Vùng tối <output id="shadows-value">0</output><input id="shadows" type="range" min="-100" max="100" value="0" /></label>
+          <label class="range-label">Tương phản <output id="contrast-value">0</output><input id="contrast" type="range" min="-100" max="100" value="0" /></label>
+          <label class="range-label">Bão hòa <output id="saturation-value">0</output><input id="saturation" type="range" min="-100" max="100" value="0" /></label>
+          <label class="range-label">Đen trắng <output id="grayscale-value">0%</output><input id="grayscale" type="range" min="0" max="100" value="0" /></label>
+          <label class="range-label">Sepia <output id="sepia-value">0%</output><input id="sepia" type="range" min="0" max="100" value="0" /></label>
+          <label class="range-label">Làm mờ <output id="blur-value">0px</output><input id="blur" type="range" min="0" max="20" value="0" /></label>
+          <label class="range-label">Xoay sắc độ <output id="hueRotate-value">0°</output><input id="hueRotate" type="range" min="-180" max="180" value="0" /></label>
+          <label class="range-label">Đảo màu <output id="invert-value">0%</output><input id="invert" type="range" min="0" max="100" value="0" /></label>
+          <button id="reset-adjustments" class="button adjustment-reset" type="button">${icon('rotate-ccw')} Đặt lại điều chỉnh</button>
+          <h2 class="image-tools-heading">Tách nền</h2><button id="remove-background" class="button background-tool" type="button">${icon('wand-sparkles')} Tách nền AI</button><p class="background-tool-note">Tách nền, dùng cọ/Magic tinh chỉnh và áp dụng trực tiếp vào lớp ảnh.</p><button id="trim-transparent" class="button background-tool" type="button">${icon('crop')} Bỏ viền trong suốt</button><p class="background-tool-note">Cắt vùng trong suốt thừa quanh lớp ảnh, giữ nguyên vị trí nội dung và khung ảnh.</p>
+        </section>
         <section id="text-properties" class="property-section" hidden><h2>Văn bản</h2><label>Nội dung<textarea id="text-content" rows="3"></textarea></label><label>Phông chữ<select id="font-family"><option value="Arial, Helvetica, sans-serif">Arial</option><option value="Verdana, Geneva, sans-serif">Verdana</option><option value="Tahoma, Geneva, sans-serif">Tahoma</option><option value="'Trebuchet MS', sans-serif">Trebuchet MS</option><option value="Georgia, serif">Georgia</option><option value="'Times New Roman', Times, serif">Times New Roman</option><option value="'Palatino Linotype', 'Book Antiqua', Palatino, serif">Palatino</option><option value="'Courier New', Courier, monospace">Courier New</option><option value="'Lucida Console', Monaco, monospace">Lucida Console</option><option value="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif">Impact</option><option value="system-ui, sans-serif">System UI</option><option value="ui-serif, Georgia, serif">UI Serif</option><option value="ui-monospace, 'Courier New', monospace">UI Monospace</option></select></label><div class="two-fields"><label>Cỡ chữ<input id="font-size" type="number" min="1" max="1000" /></label><label>Màu chữ<input id="text-color" type="color" value="#172b29" /></label></div><label>Mã màu HEX<input id="text-hex" type="text" value="#172b29" placeholder="#172b29" spellcheck="false" autocomplete="off" aria-label="Mã màu HEX" /></label><div class="text-tools">${tool('bold', 'bold', 'Chữ đậm')}${tool('italic', 'italic', 'Chữ nghiêng')}${tool('underline', 'underline', 'Gạch chân')}<span class="toolbar-divider"></span>${tool('align-left', 'align-left', 'Căn trái')}${tool('align-center', 'align-center', 'Căn giữa')}${tool('align-right', 'align-right', 'Căn phải')}</div></section>
       </div>
       <section id="drawing-tools" class="property-section drawing-tools" hidden><h2>Cọ vẽ</h2><label>Màu cọ<input id="brush-color" type="color" value="#e13b37" /></label><label class="range-label">Kích thước <output id="brush-width-value">8 px</output><input id="brush-width" type="range" min="1" max="80" value="8" /></label><p class="background-tool-note">Mỗi nét vẽ được thêm thành một lớp riêng.</p></section>
@@ -178,6 +212,14 @@ function applyImageAdjustments(object: FabricImage) {
   if (values.highlights || values.shadows) {
     imageFilters.push(new HighlightsShadows({ highlights: values.highlights / 100, shadows: values.shadows / 100 }));
   }
+  if (values.hueRotate) imageFilters.push(new filters.HueRotation({ rotation: values.hueRotate / 180 }));
+  if (values.grayscale) imageFilters.push(new filters.ColorMatrix({ matrix: blendColorMatrix(grayscaleColorMatrix, values.grayscale / 100) }));
+  if (values.sepia) imageFilters.push(new filters.ColorMatrix({ matrix: blendColorMatrix(sepiaColorMatrix, values.sepia / 100) }));
+  if (values.invert) imageFilters.push(new filters.ColorMatrix({ matrix: blendColorMatrix(invertColorMatrix, values.invert / 100) }));
+  if (values.blur) {
+    const minDimension = Math.min(object.width, object.height);
+    imageFilters.push(new filters.Blur({ blur: Math.min(1, values.blur / (minDimension * 0.12)) }));
+  }
   object.filters = imageFilters;
   object.applyFilters();
 }
@@ -194,6 +236,15 @@ function resetImageAdjustments() {
   const object = active();
   if (!(object instanceof FabricImage) || busy || !object.selectable) return;
   (object as FabricImage & Layer).imageAdjustments = { ...adjustmentDefaults };
+  applyImageAdjustments(object);
+  canvas.requestRenderAll();
+  record();
+  render();
+}
+function applyAdjustmentPreset(preset: { id: string; values: ImageAdjustments }) {
+  const object = active();
+  if (!(object instanceof FabricImage) || busy || !object.selectable) return;
+  (object as FabricImage & Layer).imageAdjustments = { ...preset.values };
   applyImageAdjustments(object);
   canvas.requestRenderAll();
   record();
@@ -442,7 +493,13 @@ function renderProperties() {
     const values = readImageAdjustments(object);
     for (const key of adjustmentKeys) {
       if (document.activeElement !== input(key)) input(key).value = String(values[key]);
-      element(`${key}-value`).textContent = String(values[key]);
+      const suffix = key === 'blur' ? 'px' : key === 'hueRotate' ? '°' : key === 'grayscale' || key === 'sepia' || key === 'invert' ? '%' : '';
+      element(`${key}-value`).textContent = `${values[key]}${suffix}`;
+    }
+    const preset = adjustmentPresets.find(candidate => adjustmentKeys.every(key => candidate.values[key] === values[key]));
+    for (const button of element('image-presets').querySelectorAll<HTMLButtonElement>('[data-preset]')) {
+      button.classList.toggle('active', button.dataset.preset === preset?.id);
+      button.setAttribute('aria-pressed', String(button.dataset.preset === preset?.id));
     }
   }
   if (isText(object)) {
@@ -687,6 +744,12 @@ on('remove-background', () => { void editSelectedBackground(); });
 on('trim-transparent', () => { void trimSelectedImage(); });
 on('draw', () => { setDrawingMode(!canvas.isDrawingMode); });
 on('reset-adjustments', resetImageAdjustments);
+element('image-presets').querySelectorAll<HTMLButtonElement>('[data-preset]').forEach(button => {
+  button.addEventListener('click', () => {
+    const preset = adjustmentPresets.find(candidate => candidate.id === button.dataset.preset);
+    if (preset) applyAdjustmentPreset(preset);
+  });
+});
 for (const key of adjustmentKeys) {
   input(key).addEventListener('input', () => setImageAdjustment(key, input(key).valueAsNumber, false));
   input(key).addEventListener('change', () => setImageAdjustment(key, input(key).valueAsNumber, true));
