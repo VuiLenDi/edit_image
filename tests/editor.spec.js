@@ -348,6 +348,28 @@ test('clipboard image, text formatting, visibility, lock, duplicate and delete',
   await page.screenshot({ path: 'test-results/text-editing.png' });
 });
 
+test('quick rotation buttons set common angles and support undo', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#add-text').click();
+  await expect(page.locator('#rotation')).toHaveValue('0');
+
+  await page.locator('#rotate-90').click();
+  await expect(page.locator('#rotation')).toHaveValue('90');
+  await page.locator('#undo').click();
+  await page.locator('.layer-select').click();
+  await expect(page.locator('#rotation')).toHaveValue('0');
+  await page.locator('#redo').click();
+  await page.locator('.layer-select').click();
+  await expect(page.locator('#rotation')).toHaveValue('90');
+
+  await page.locator('#rotate-minus-90').click();
+  await expect(page.locator('#rotation')).toHaveValue('-90');
+  await page.locator('#rotate-180').click();
+  await expect(page.locator('#rotation')).toHaveValue('180');
+  await page.locator('#rotate-reset').click();
+  await expect(page.locator('#rotation')).toHaveValue('0');
+});
+
 test('multi-select layer alignment and drag-to-resize canvas', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
