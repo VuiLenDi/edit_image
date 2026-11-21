@@ -16,6 +16,22 @@
 .drawing-tools label+label{margin-top:16px}
 .drawing-tools input[type=color]{max-width:54px}
 .drawing-tools .background-tool-note{text-align:left}
+.export-dialog{width:min(440px,calc(100vw - 32px));max-width:none;max-height:90dvh;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:inherit;box-shadow:0 18px 70px #172b2940;overflow:auto}
+.export-dialog::backdrop{background:#10231f70;backdrop-filter:blur(2px)}
+.export-dialog-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 22px 15px;border-bottom:1px solid var(--line)}
+.export-dialog-header h2{font-size:15px}
+.export-dialog-header p{margin:6px 0 0;color:#7b8885;font-size:11px}
+.export-dialog-content{padding:18px 22px}
+.export-dialog-content>label{margin:0}
+.export-compression{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.export-compression h3{margin:0 0 15px;font-size:12px}
+.export-compression .range-label{margin-top:0!important}
+.export-compression .range-label input{margin-top:10px!important}
+.export-compression .is-disabled{opacity:.55}
+.export-compression p{margin:12px 0 0;color:#7b8885;font-size:10px;line-height:1.55}
+.export-dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:0 22px 20px}
+.header .primary{flex-shrink:0}
+@media(max-width:640px){.header #export{padding:8px 10px;min-height:35px;font-size:10px;gap:5px}.header #export svg{width:15px;height:15px}.export-dialog-header{padding:16px}.export-dialog-content{padding:16px}.export-dialog-actions{padding:0 16px 16px}}
 @media(prefers-reduced-motion:no-preference){.empty-state{animation:appear .4s ease-out}@keyframes appear{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}}
 .layer-align-tools{display:flex;justify-content:flex-end;gap:2px;margin:0 15px;padding:4px 0 10px;border-bottom:1px solid var(--line)}.canvas-shell{position:relative}.canvas-resize-handle{position:absolute;z-index:3;padding:0;background:#fff;border:2px solid var(--accent);border-radius:3px;box-shadow:0 1px 4px #24372d40;touch-action:none}.canvas-resize-handle:hover{background:#e7f3ee}.resize-east{right:-6px;top:50%;width:10px;height:28px;transform:translateY(-50%);cursor:ew-resize}.resize-south{bottom:-6px;left:50%;width:28px;height:10px;transform:translateX(-50%);cursor:ns-resize}.resize-corner{right:-7px;bottom:-7px;width:16px;height:16px;cursor:nwse-resize}.canvas-shell.is-empty .canvas-resize-handle{display:none}
 

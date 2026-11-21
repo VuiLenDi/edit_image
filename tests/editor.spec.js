@@ -28,11 +28,21 @@ async function setRange(page, selector, value) {
   }, value);
 }
 
+async function openExportDialog(page) {
+  await page.locator('#export').click();
+  await expect(page.locator('#export-dialog')).toBeVisible();
+}
+
+async function confirmExport(page) {
+  await page.locator('#export-confirm').click();
+}
+
 async function exportedImage(page, targetColor) {
   await page.evaluate(() => { window.showSaveFilePicker = undefined; });
   page.once('dialog', dialog => dialog.accept(dialog.defaultValue()));
   const downloadPromise = page.waitForEvent('download');
-  await page.locator('#export').click();
+  await openExportDialog(page);
+  await confirmExport(page);
   const download = await downloadPromise;
   const data = (await readFile(await download.path())).toString('base64');
   return page.evaluate(async ({ data, targetColor }) => {
@@ -529,7 +539,8 @@ test('select an image, confirm PNG save, and write a full-size PNG', async ({ pa
     };
   });
   const previousZoom = await page.locator('#zoom-label').textContent();
-  await page.locator('#export').click();
+  await openExportDialog(page);
+  await confirmExport(page);
   await expect(page.locator('#toast')).toHaveText('Đã lưu ten-da-chon.png.');
   const saved = await page.evaluate(async () => {
     const bitmap = await createImageBitmap(window.savedBlob);
@@ -546,28 +557,144 @@ test('select an image, confirm PNG save, and write a full-size PNG', async ({ pa
   await expect(page.locator('#export')).toBeEnabled();
 });
 
+test('JPEG export uses the selected extension and fills transparent areas white', async ({ page }) => {
+  await page.goto('/');
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 80;
+    canvas.height = 60;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#22aa66';
+    context.fillRect(30, 20, 20, 20);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await page.locator('#file-input').setInputFiles({ name: 'transparent.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
+  await expect(page.locator('#layer-count')).toHaveText('1');
+  await openExportDialog(page);
+  await page.locator('#export-format').selectOption('jpeg');
+  await expect(page.locator('#export-quality')).toBeEnabled();
+  await page.evaluate(() => {
+    window.showSaveFilePicker = async options => {
+      window.saveOptions = options;
+      return {
+        name: options.suggestedName,
+        createWritable: async () => ({
+          write: async blob => { window.savedBlob = blob; },
+          close: async () => {},
+        }),
+      };
+    };
+  });
+  await confirmExport(page);
+  await expect(page.locator('#toast')).toHaveText('Đã lưu transparent.jpg.');
+  const saved = await page.evaluate(async () => {
+    const bitmap = await createImageBitmap(window.savedBlob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    context.drawImage(bitmap, 0, 0);
+    return {
+      mime: window.savedBlob.type,
+      width: bitmap.width,
+      height: bitmap.height,
+      corner: [...context.getImageData(0, 0, 1, 1).data],
+      options: window.saveOptions,
+    };
+  });
+  expect(saved).toMatchObject({
+    mime: 'image/jpeg',
+    width: 80,
+    height: 60,
+    options: { suggestedName: 'transparent.jpg', types: [{ accept: { 'image/jpeg': ['.jpg', '.jpeg'] } }] },
+  });
+  expect(saved.corner[0]).toBeGreaterThan(250);
+  expect(saved.corner[1]).toBeGreaterThan(250);
+  expect(saved.corner[2]).toBeGreaterThan(250);
+});
+
+test('WebP quality setting compresses output and PNG quality remains disabled', async ({ page }) => {
+  await page.goto('/');
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const context = canvas.getContext('2d');
+    const pixels = context.createImageData(canvas.width, canvas.height);
+    let seed = 123456789;
+    for (let index = 0; index < pixels.data.length; index += 4) {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      pixels.data[index] = seed & 255;
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      pixels.data[index + 1] = seed & 255;
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      pixels.data[index + 2] = seed & 255;
+      pixels.data[index + 3] = 255;
+    }
+    context.putImageData(pixels, 0, 0);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await page.locator('#file-input').setInputFiles({ name: 'noise.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
+  await expect(page.locator('#layer-count')).toHaveText('1');
+  await openExportDialog(page);
+  await expect(page.locator('#export-quality')).toBeDisabled();
+  await page.locator('#export-format').selectOption('webp');
+  await expect(page.locator('#export-quality')).toBeEnabled();
+  await page.evaluate(() => {
+    window.savedBlobs = [];
+    window.showSaveFilePicker = async options => ({
+      name: options.suggestedName,
+      createWritable: async () => ({
+        write: async blob => { window.savedBlobs.push(blob); },
+        close: async () => {},
+      }),
+    });
+  });
+
+  await setRange(page, '#export-quality', 20);
+  await confirmExport(page);
+  await expect(page.locator('#toast')).toHaveText('Đã lưu noise.webp.');
+  await openExportDialog(page);
+  await setRange(page, '#export-quality', 100);
+  await confirmExport(page);
+  await expect(page.locator('#toast')).toHaveText('Đã lưu noise.webp.');
+  const sizes = await page.evaluate(() => window.savedBlobs.map(blob => ({ type: blob.type, size: blob.size })));
+  expect(sizes[0].type).toBe('image/webp');
+  expect(sizes[1].type).toBe('image/webp');
+  expect(sizes[0].size).toBeLessThan(sizes[1].size);
+});
+
 test('cancel picker reports cancellation without downloading; fallback supports cancel', async ({ page }) => {
   await page.goto('/');
   await page.locator('#add-text').click();
   const downloads = [];
   page.on('download', download => downloads.push(download.suggestedFilename()));
   await page.evaluate(() => { window.showSaveFilePicker = async () => { throw new DOMException('Canceled', 'AbortError'); }; });
-  await page.locator('#export').click();
+  await openExportDialog(page);
+  await confirmExport(page);
   await expect(page.locator('#export')).toBeEnabled();
   await expect(page.locator('#status')).toHaveText('Sẵn sàng chỉnh ảnh');
-  await expect(page.locator('#toast')).toHaveText('Chưa lưu PNG: thao tác bị hủy ở bước "mở hộp chọn nơi lưu". Kiểm tra Console để xem lỗi chi tiết.');
+  await expect(page.locator('#toast')).toHaveText('Chưa lưu ảnh: thao tác bị hủy ở bước "mở hộp chọn nơi lưu". Kiểm tra Console để xem lỗi chi tiết.');
   expect(downloads).toEqual([]);
   await page.evaluate(() => { window.showSaveFilePicker = undefined; });
   page.once('dialog', dialog => dialog.dismiss());
-  await page.locator('#export').click();
+  await openExportDialog(page);
+  await confirmExport(page);
   await expect(page.locator('#export')).toBeEnabled();
   expect(downloads).toEqual([]);
   page.once('dialog', dialog => dialog.accept('ảnh tôi muốn lưu'));
   const downloadPromise = page.waitForEvent('download');
-  await page.locator('#export').click();
+  await openExportDialog(page);
+  await confirmExport(page);
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe('ảnh tôi muốn lưu.png');
-  await expect(page.locator('#toast')).toHaveText('Đã tải PNG. Thư mục lưu theo thiết lập tải xuống của trình duyệt.');
+  await expect(page.locator('#toast')).toHaveText('Đã tải ảnh PNG. Thư mục lưu theo thiết lập tải xuống của trình duyệt.');
 });
 
 test('iPhone export shares a PNG so it can be saved to Photos', async ({ page }) => {
@@ -581,7 +708,8 @@ test('iPhone export shares a PNG so it can be saved to Photos', async ({ page })
     Object.defineProperty(navigator, 'share', { configurable: true, value: async data => { window.sharedData = data; } });
   });
 
-  await page.locator('#export').click();
+  await openExportDialog(page);
+  await confirmExport(page);
   await expect(page.locator('#toast')).toHaveText('Trong menu chia sẻ, chọn Lưu hình ảnh để lưu vào Ảnh.');
   const shared = await page.evaluate(async () => {
     const file = window.sharedData.files[0];
@@ -622,7 +750,8 @@ test('trim transparent image borders preserves transformed content, soft alpha a
     await page.evaluate(() => { window.showSaveFilePicker = undefined; });
     page.once('dialog', dialog => dialog.accept(dialog.defaultValue()));
     const downloadPromise = page.waitForEvent('download');
-    await page.locator('#export').click();
+    await openExportDialog(page);
+    await confirmExport(page);
     const png = await readFile(await (await downloadPromise).path());
     return page.evaluate(async data => {
       const image = new Image();
@@ -745,18 +874,22 @@ test('background editor selects and erases connected pixels, applies to layer an
   await page.evaluate(() => {
     Object.defineProperty(window, 'showSaveFilePicker', {
       configurable: true,
-      value: async () => ({
-        name: 'background-test.png',
-        createWritable: async () => ({
-          write: async blob => { window.savedBlob = blob; },
-          close: async () => {},
-        }),
+      value: async () => new Promise(resolve => {
+        window.finishSavePicker = () => resolve({
+          name: 'background-test.png',
+          createWritable: async () => ({
+            write: async blob => { window.savedBlob = blob; },
+            close: async () => {},
+          }),
+        });
       }),
     });
   });
   const exportCenter = async () => {
-    await page.locator('#export').click();
+    await openExportDialog(page);
+    await confirmExport(page);
     await expect(page.locator('#export')).toBeDisabled();
+    await page.evaluate(() => window.finishSavePicker());
     await expect(page.locator('#export')).toBeEnabled();
     await expect(page.locator('#toast')).toHaveText('Đã lưu background-test.png.');
     return page.evaluate(async () => {
