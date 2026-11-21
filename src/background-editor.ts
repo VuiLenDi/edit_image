@@ -1,5 +1,4 @@
-import { removeBackground } from '@imgly/background-removal';
-import { createIcons, icons } from 'lucide';
+import { icon, renderIcons } from './icons';
 import {
   composite,
   eraseSelection,
@@ -18,8 +17,6 @@ type HistoryEntry = {
   decontaminate: boolean;
   compareOriginal: boolean;
 };
-
-const icon = (name: string) => `<i data-lucide="${name}"></i>`;
 
 function createDialog() {
   const dialog = document.createElement('dialog');
@@ -91,7 +88,7 @@ function createDialog() {
       <div class="bg-actions"><button id="bg-cancel" class="button bg-secondary" type="button">Hủy</button><button id="bg-apply" class="button primary" type="button">${icon('check')} Áp dụng vào lớp</button></div>
     </footer>`;
   document.body.append(dialog);
-  createIcons({ icons });
+  renderIcons();
   return dialog;
 }
 

@@ -334,10 +334,14 @@ test('clipboard image, text formatting, visibility, lock, duplicate and delete',
   await page.locator('#delete').click();
   await expect(page.locator('#layer-count')).toHaveText('2');
   await page.getByRole('button', { name: 'Ẩn Văn bản mới', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Hiện Văn bản mới', exact: true })).toBeVisible();
+  const showLayerButton = page.getByRole('button', { name: 'Hiện Văn bản mới', exact: true });
+  await expect(showLayerButton).toBeVisible();
+  await expect(showLayerButton.locator('svg')).toHaveCount(1);
   await page.getByRole('button', { name: 'Hiện Văn bản mới', exact: true }).click();
   await page.getByRole('button', { name: 'Khóa Văn bản mới', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Mở khóa Văn bản mới', exact: true })).toBeVisible();
+  const unlockLayerButton = page.getByRole('button', { name: 'Mở khóa Văn bản mới', exact: true });
+  await expect(unlockLayerButton).toBeVisible();
+  await expect(unlockLayerButton.locator('svg')).toHaveCount(1);
   await page.getByRole('button', { name: 'Mở khóa Văn bản mới', exact: true }).click();
   await page.locator('.layer-select').first().click();
   await expect(page.locator('#rotation')).toHaveValue('15');

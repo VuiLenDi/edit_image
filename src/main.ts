@@ -1,6 +1,5 @@
 import { ActiveSelection, Canvas, FabricImage, FabricObject, PencilBrush, Point, StaticCanvas, Textbox, filters, util } from 'fabric';
-import { createIcons, icons } from 'lucide';
-import { editImageBackground } from './background-editor';
+import { icon, renderIcons } from './icons';
 import { HighlightsShadows } from './highlights-shadows-filter';
 import { cropRgba, extractAlpha, findVisibleBounds } from './mask';
 import './style.css';
@@ -44,7 +43,6 @@ type ExportFormat = keyof typeof exportFormats;
 FabricObject.customProperties = ['layerName', 'imageAdjustments'];
 FabricObject.ownDefaults = { ...FabricObject.ownDefaults, cornerColor: '#087f69', borderColor: '#087f69', cornerStrokeColor: '#ffffff', cornerSize: 10, transparentCorners: false, padding: 3 };
 
-const icon = (name: string) => `<i data-lucide="${name}"></i>`;
 const tool = (id: string, name: string, title: string) => `<button id="${id}" class="icon-button" title="${title}" aria-label="${title}">${icon(name)}</button>`;
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <header class="header">
@@ -125,7 +123,7 @@ const element = <T extends HTMLElement = HTMLElement>(id: string) => document.ge
 const input = (id: string) => element<HTMLInputElement>(id);
 const on = (id: string, callback: () => void) => element(id).addEventListener('click', callback);
 const refreshIcons = () => {
-  createIcons({ icons, attrs: { 'stroke-width': 1.7 } });
+  renderIcons(1.7);
   document.querySelectorAll('svg[data-lucide]').forEach(svg => svg.removeAttribute('data-lucide'));
 };
 const canvas = new Canvas('canvas', { width: 1200, height: 800, preserveObjectStacking: true, selection: false });
@@ -655,6 +653,7 @@ async function editSelectedBackground() {
     const pixels = context.getImageData(0, 0, object.width, object.height).data;
     sourceCanvas.width = 0;
     sourceCanvas.height = 0;
+    const { editImageBackground } = await import('./background-editor');
     const result = await editImageBackground(pixels, object.width, object.height, (object as Layer).layerName || 'Lớp ảnh');
     if (!result) return;
     const reader = new FileReader();
