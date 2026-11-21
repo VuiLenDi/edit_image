@@ -178,11 +178,11 @@ test('image adjustments are per-layer, tonal, resettable and reversible', async 
   await expect(page.locator('#undo')).toBeEnabled();
   await page.locator('#undo').click();
   await expect(page.locator('#layer-count')).toHaveText('1');
-  await page.locator('.layer-select').click();
+  await page.locator('.layer-select').nth(0).click();
   await expect(page.locator('#highlights')).toHaveValue('0');
   expect((await exportedImage(page)).bottomRight).toEqual(shadowsLifted.bottomRight);
   await page.locator('#redo').click();
-  await page.locator('.layer-select').click();
+  await page.locator('.layer-select').nth(0).click();
   await expect(page.locator('#highlights')).toHaveValue('80');
 
   await setRange(page, '#brightness', 20);
@@ -191,7 +191,7 @@ test('image adjustments are per-layer, tonal, resettable and reversible', async 
   expect(adjustedBase.center[0]).not.toBe(128);
 
   await upload(page, 'overlay.png', '#c08080', 20, 20);
-  for (const id of ['brightness', 'highlights', 'shadows', 'contrast', 'saturation']) {
+  for (const id of ['brightness', 'highlights', 'shadows', 'contrast', 'saturation', 'grayscale', 'sepia', 'blur', 'hueRotate', 'invert']) {
     await expect(page.locator(`#${id}`)).toHaveValue('0');
   }
   const overlayOriginal = await exportedImage(page);
@@ -207,12 +207,69 @@ test('image adjustments are per-layer, tonal, resettable and reversible', async 
   await expect(page.locator('#shadows')).toHaveValue('80');
   await expect(page.locator('#contrast')).toHaveValue('40');
   await page.locator('#reset-adjustments').click();
-  for (const id of ['brightness', 'highlights', 'shadows', 'contrast', 'saturation']) {
+  for (const id of ['brightness', 'highlights', 'shadows', 'contrast', 'saturation', 'grayscale', 'sepia', 'blur', 'hueRotate', 'invert']) {
     await expect(page.locator(`#${id}`)).toHaveValue('0');
   }
   await page.locator('#undo').click();
   await page.locator('.layer-select').nth(1).click();
   await expect(page.locator('#brightness')).toHaveValue('20');
+});
+
+test('grayscale, sepia, hue, invert, blur and presets affect exported images', async ({ page }) => {
+  await page.goto('/');
+  await upload(page, 'red.png', '#ff0000', 100, 100);
+  await setRange(page, '#grayscale', 100);
+  const grayscale = (await exportedImage(page)).center;
+  expect(Math.abs(grayscale[0] - grayscale[1])).toBeLessThanOrEqual(1);
+  expect(Math.abs(grayscale[1] - grayscale[2])).toBeLessThanOrEqual(1);
+
+  await setRange(page, '#grayscale', 0);
+  await setRange(page, '#sepia', 100);
+  const sepia = (await exportedImage(page)).center;
+  expect(sepia[0]).toBeGreaterThan(sepia[1]);
+  expect(sepia[1]).toBeGreaterThan(sepia[2]);
+
+  await setRange(page, '#sepia', 0);
+  await setRange(page, '#hueRotate', 90);
+  expect((await exportedImage(page)).center.slice(0, 3)).not.toEqual([255, 0, 0]);
+  await setRange(page, '#hueRotate', 0);
+  await setRange(page, '#invert', 100);
+  expect((await exportedImage(page)).center).toEqual([0, 255, 255, 255]);
+  await setRange(page, '#invert', 0);
+
+  const splitImage = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 100;
+    canvas.height = 100;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#000000';
+    context.fillRect(0, 0, 50, 100);
+    context.fillStyle = '#ffffff';
+    context.fillRect(50, 0, 50, 100);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await page.locator('#file-input').setInputFiles({ name: 'split.png', mimeType: 'image/png', buffer: Buffer.from(splitImage, 'base64') });
+  const sharpEdge = (await exportedImage(page)).center[0];
+  await setRange(page, '#blur', 10);
+  expect((await exportedImage(page)).center[0]).toBeLessThan(sharpEdge - 10);
+
+  await expect(page.locator('#image-presets [data-preset]')).toHaveCount(8);
+  await page.locator('#image-presets [data-preset="grayscale"]').click();
+  await expect(page.locator('#grayscale')).toHaveValue('100');
+  await expect(page.locator('#image-presets [data-preset="grayscale"]')).toHaveAttribute('aria-pressed', 'true');
+  const presetGrayscale = (await exportedImage(page)).center;
+  expect(Math.abs(presetGrayscale[0] - presetGrayscale[2])).toBeLessThanOrEqual(1);
+  await page.locator('#image-presets [data-preset="original"]').click();
+  await expect(page.locator('#image-presets [data-preset="original"]')).toHaveAttribute('aria-pressed', 'true');
+  for (const id of ['grayscale', 'sepia', 'blur', 'hueRotate', 'invert']) {
+    await expect(page.locator(`#${id}`)).toHaveValue('0');
+  }
+  await page.locator('#undo').click();
+  await page.locator('.layer-select').nth(0).click();
+  await expect(page.locator('#grayscale')).toHaveValue('100');
+  await page.locator('#redo').click();
+  await page.locator('.layer-select').nth(0).click();
+  await expect(page.locator('#grayscale')).toHaveValue('0');
 });
 
 test('freehand drawing creates editable layers, exports and supports undo', async ({ page }) => {
@@ -664,6 +721,7 @@ test('WebP quality setting compresses output and PNG quality remains disabled', 
   await setRange(page, '#export-quality', 100);
   await confirmExport(page);
   await expect(page.locator('#toast')).toHaveText('Đã lưu noise.webp.');
+  await expect.poll(() => page.evaluate(() => window.savedBlobs.length)).toBe(2);
   const sizes = await page.evaluate(() => window.savedBlobs.map(blob => ({ type: blob.type, size: blob.size })));
   expect(sizes[0].type).toBe('image/webp');
   expect(sizes[1].type).toBe('image/webp');
