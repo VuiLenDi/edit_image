@@ -16,6 +16,12 @@ type Snapshot = { scene: object; width: number; height: number; name: string };
 type SavePickerWindow = Window & {
   showSaveFilePicker?: (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle>;
 };
+const exportFormats = {
+  png: { mime: 'image/png', extension: 'png', description: 'Ảnh PNG', accept: ['.png'] },
+  jpeg: { mime: 'image/jpeg', extension: 'jpg', description: 'Ảnh JPEG', accept: ['.jpg', '.jpeg'] },
+  webp: { mime: 'image/webp', extension: 'webp', description: 'Ảnh WebP', accept: ['.webp'] },
+} as const;
+type ExportFormat = keyof typeof exportFormats;
 FabricObject.customProperties = ['layerName', 'imageAdjustments'];
 FabricObject.ownDefaults = { ...FabricObject.ownDefaults, cornerColor: '#087f69', borderColor: '#087f69', cornerStrokeColor: '#ffffff', cornerSize: 10, transparentCorners: false, padding: 3 };
 
@@ -26,7 +32,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <a class="brand" href="./" aria-label="Lớp - trang chính"><span class="brand-symbol">${icon('layers-2')}</span><span>Lớp<span class="brand-dot">.</span></span></a>
     <span class="header-divider"></span><input id="project-name" aria-label="Tên ảnh" value="Ảnh chưa đặt tên" maxlength="100" />
     <span class="local-badge">${icon('shield-check')} Chỉ trên thiết bị</span>
-    <button id="export" class="button primary">${icon('download')}<span>Tải PNG</span></button>
+    <button id="export" class="button primary">${icon('download')}<span>Tải ảnh</span></button>
   </header>
   <nav class="toolbar" aria-label="Công cụ chỉnh ảnh">
     <div class="tool-group"><button id="upload" class="button" aria-label="Thêm ảnh" title="Thêm ảnh">${icon('image-plus')}<span>Thêm ảnh</span></button><button id="paste" class="button" aria-label="Dán ảnh hoặc chữ" title="Dán ảnh hoặc chữ">${icon('clipboard-paste')}<span>Dán</span></button><button id="add-text" class="button" aria-label="Thêm chữ" title="Thêm chữ">${icon('type')}<span>Thêm chữ</span></button><button id="draw" class="button" type="button" aria-label="Vẽ tự do" aria-pressed="false" title="Vẽ tự do">${icon('pencil')}<span>Vẽ</span></button></div>
@@ -66,6 +72,18 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </aside>
   </main>
   <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/bmp" multiple hidden />
+  <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-dialog-title">
+    <div class="export-dialog-header"><div><h2 id="export-dialog-title">Tải ảnh</h2><p>Chọn định dạng và mức nén cho ảnh đã ghép.</p></div><button id="export-cancel" class="icon-button" type="button" aria-label="Đóng">${icon('x')}</button></div>
+    <div class="export-dialog-content">
+      <label>Định dạng<select id="export-format"><option value="png">PNG — giữ nền trong suốt</option><option value="jpeg">JPEG — tệp ảnh phổ biến</option><option value="webp">WebP — dung lượng nhỏ</option></select></label>
+      <section class="export-compression" aria-labelledby="export-compression-title">
+        <h3 id="export-compression-title">Nén hình ảnh</h3>
+        <label id="export-quality-label" class="range-label">Chất lượng <output id="export-quality-value">80%</output><input id="export-quality" type="range" min="10" max="100" value="80" /></label>
+        <p id="export-format-note">PNG không mất dữ liệu; thanh nén chỉ áp dụng cho JPEG và WebP.</p>
+      </section>
+    </div>
+    <div class="export-dialog-actions"><button id="export-cancel-secondary" class="button" type="button">Hủy</button><button id="export-confirm" class="button primary" type="button">${icon('download')} Tải ảnh</button></div>
+  </dialog>
   <div id="toast" role="alert" hidden></div>
 `;
 
@@ -695,12 +713,42 @@ async function duplicate() {
   } catch (error) { reportError(error); }
   finally { busy = false; record(); render(); }
 }
-async function exportPng() {
+function currentExportFormat(): ExportFormat {
+  const format = element<HTMLSelectElement>('export-format').value;
+  if (format === 'png' || format === 'jpeg' || format === 'webp') return format;
+  throw new Error(`Định dạng xuất không hợp lệ: ${format}`);
+}
+function updateExportOptions() {
+  const format = currentExportFormat();
+  const lossless = format === 'png';
+  input('export-quality').disabled = lossless;
+  element('export-quality-label').classList.toggle('is-disabled', lossless);
+  element('export-format-note').textContent = lossless
+    ? 'PNG giữ nguyên chất lượng và nền trong suốt; không áp dụng nén mất dữ liệu.'
+    : `${format === 'jpeg' ? 'JPEG không hỗ trợ nền trong suốt; vùng trong suốt sẽ có nền trắng.' : 'WebP giữ nền trong suốt.'} Giảm chất lượng để nén mạnh hơn và tạo tệp nhỏ hơn.`;
+}
+element('export-format').addEventListener('change', updateExportOptions);
+input('export-quality').addEventListener('input', () => {
+  element('export-quality-value').textContent = `${input('export-quality').value}%`;
+});
+updateExportOptions();
+async function exportImage() {
   if (busy || !canvas.getObjects().length) return;
   let exportStage = 'chuẩn bị ảnh';
   try {
-    const pngName = (name: string) => `${name.trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').replace(/\.png$/i, '') || 'anh-da-chinh'}.png`;
-    let filename = pngName(input('project-name').value);
+    const format = currentExportFormat();
+    const details = exportFormats[format];
+    const quality = format === 'png' ? 1 : input('export-quality').valueAsNumber / 100;
+    const formatProbe = document.createElement('canvas').toDataURL(details.mime, quality);
+    if (!formatProbe.startsWith(`data:${details.mime}`)) {
+      notify(`Trình duyệt không hỗ trợ xuất ảnh ${format.toUpperCase()}.`);
+      return;
+    }
+    const outputName = (name: string) => {
+      const base = name.trim().replace(/\.(?:png|jpe?g|webp)$/i, '').replace(/[<>:"/\\|?*\x00-\x1F]/g, '-');
+      return `${base || 'anh-da-chinh'}.${details.extension}`;
+    };
+    let filename = outputName(input('project-name').value);
     const picker = (window as SavePickerWindow).showSaveFilePicker;
     const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const supportsFileShare = isIOS && typeof navigator.share === 'function' && typeof navigator.canShare === 'function';
@@ -710,26 +758,35 @@ async function exportPng() {
     updateHistoryButtons();
     if (picker) {
       exportStage = 'mở hộp chọn nơi lưu';
-      handle = await picker.call(window, { suggestedName: filename, types: [{ description: 'Ảnh PNG', accept: { 'image/png': ['.png'] } }] });
+      handle = await picker.call(window, { suggestedName: filename, types: [{ description: details.description, accept: { [details.mime]: [...details.accept] } }] });
     } else if (!supportsFileShare) {
-      const name = window.prompt('Tên tệp PNG:', filename);
+      const name = window.prompt('Tên tệp ảnh:', filename);
       if (name === null) return;
-      filename = pngName(name);
+      filename = outputName(name);
     }
     const previewZoom = zoom;
+    const previousBackground = canvas.backgroundColor;
     let url: string;
     try {
-      exportStage = 'tạo ảnh PNG';
+      exportStage = `tạo ảnh ${format.toUpperCase()}`;
       setZoom(1);
-      url = canvas.toDataURL({ format: 'png', multiplier: 1, enableRetinaScaling: false, width: documentWidth, height: documentHeight });
-    } finally { setZoom(previewZoom); }
+      if (format === 'jpeg' && !canvas.backgroundColor) canvas.backgroundColor = '#ffffff';
+      url = canvas.toDataURL({ format, quality, multiplier: 1, enableRetinaScaling: false, width: documentWidth, height: documentHeight });
+      if (!url.startsWith(`data:${details.mime}`)) {
+        notify(`Trình duyệt không hỗ trợ xuất ảnh ${format.toUpperCase()}.`);
+        return;
+      }
+    } finally {
+      canvas.backgroundColor = previousBackground;
+      setZoom(previewZoom);
+    }
     if (handle) {
-      exportStage = 'tạo dữ liệu PNG';
+      exportStage = 'tạo dữ liệu ảnh';
       const blob = await (await fetch(url)).blob();
       exportStage = 'mở tệp để ghi';
       const writable = await handle.createWritable();
       try {
-        exportStage = 'ghi dữ liệu PNG';
+        exportStage = 'ghi dữ liệu ảnh';
         await writable.write(blob);
         exportStage = 'đóng tệp sau khi ghi';
         await writable.close();
@@ -738,9 +795,9 @@ async function exportPng() {
       notify(`Đã lưu ${handle.name}.`);
     } else {
       const blob = await (await fetch(url)).blob();
-      const file = new File([blob], filename, { type: 'image/png' });
+      const file = new File([blob], filename, { type: details.mime });
       if (supportsFileShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: filename.replace(/\.png$/i, '') });
+        await navigator.share({ files: [file], title: filename.replace(/\.[^.]+$/, '') });
         notify('Trong menu chia sẻ, chọn Lưu hình ảnh để lưu vào Ảnh.');
         return;
       }
@@ -749,16 +806,17 @@ async function exportPng() {
       link.href = url;
       link.click();
       notify(isIOS
-        ? 'Đã tải PNG. Mở Tệp > Tải về hoặc vị trí tải xuống đã chọn trong Safari.'
-        : 'Đã tải PNG. Thư mục lưu theo thiết lập tải xuống của trình duyệt.');
+        ? `Đã tải ảnh ${format.toUpperCase()}. Mở Tệp > Tải về hoặc vị trí tải xuống đã chọn trong Safari.`
+        : `Đã tải ảnh ${format.toUpperCase()}. Thư mục lưu theo thiết lập tải xuống của trình duyệt.`);
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      console.warn(`Xuất PNG bị hủy ở bước "${exportStage}".`, error);
-      notify(`Chưa lưu PNG: thao tác bị hủy ở bước "${exportStage}". Kiểm tra Console để xem lỗi chi tiết.`);
+      console.warn(`Xuất ảnh bị hủy ở bước "${exportStage}".`, error);
+      notify(`Chưa lưu ảnh: thao tác bị hủy ở bước "${exportStage}". Kiểm tra Console để xem lỗi chi tiết.`);
       return;
     }
-    notify('Không thể lưu PNG. Hãy kiểm tra quyền lưu tệp hoặc thử trình duyệt Chrome/Edge.');
+    console.error(error);
+    notify('Không thể lưu ảnh. Hãy kiểm tra quyền lưu tệp hoặc thử trình duyệt Chrome/Edge.');
   } finally { busy = false; render(); updateHistoryButtons(); }
 }
 for (const id of ['upload', 'first-upload', 'add-layer']) on(id, () => input('file-input').click());
@@ -774,7 +832,15 @@ on('duplicate', () => { void duplicate(); });
 on('merge-layers', () => { void mergeSelectedLayers(); });
 on('undo', () => { void restore(-1); });
 on('redo', () => { void restore(1); });
-on('export', exportPng);
+on('export', () => {
+  if (!busy && canvas.getObjects().length) element<HTMLDialogElement>('export-dialog').showModal();
+});
+on('export-cancel', () => element<HTMLDialogElement>('export-dialog').close());
+on('export-cancel-secondary', () => element<HTMLDialogElement>('export-dialog').close());
+on('export-confirm', () => {
+  element<HTMLDialogElement>('export-dialog').close();
+  void exportImage();
+});
 on('raise', () => changeObject(object => { canvas.bringObjectForward(object); }));
 on('lower', () => changeObject(object => { canvas.sendObjectBackwards(object); }));
 for (const alignment of alignments) on(`align-layers-${alignment}`, () => alignSelected(alignment));

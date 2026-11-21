@@ -1,6 +1,6 @@
 # Chỉnh sửa ảnh VLD — Trình chỉnh ảnh nhiều lớp
 
-Chỉnh sửa ảnh VLD là ứng dụng chỉnh sửa ảnh chạy trên trình duyệt. Bạn có thể ghép ảnh, thêm chữ và nét vẽ, tinh chỉnh màu sắc, rồi xuất thành PNG.
+Chỉnh sửa ảnh VLD là ứng dụng chỉnh sửa ảnh chạy trên trình duyệt. Bạn có thể ghép ảnh, thêm chữ và nét vẽ, tinh chỉnh màu sắc, rồi xuất thành PNG, JPEG hoặc WebP.
 
 ## Quyền riêng tư và bảo mật
 
@@ -31,12 +31,12 @@ Mở URL được Vite hiển thị trong terminal. Tạo bản production bằn
 - **Tách nền AI:** xử lý ảnh trên thiết bị, tinh chỉnh bằng cọ xóa/khôi phục và Magic, điều chỉnh viền và nền xem trước, rồi áp dụng vào lớp ảnh. Có lịch sử riêng khi tinh chỉnh và lịch sử chung sau khi áp dụng.
 - **Bỏ viền trong suốt:** cắt vùng alpha trong suốt thừa quanh lớp ảnh, giữ nguyên pixel bán trong suốt và vị trí nội dung trên khung; không đổi kích thước khung ảnh.
 - **Khung ảnh:** thay đổi kích thước, chọn nền màu hoặc trong suốt, phóng to/thu nhỏ và vừa khung.
-- **Hoàn tác và xuất:** hoàn tác/làm lại tối đa 25 trạng thái; xuất PNG ở độ phân giải khung ảnh, không phụ thuộc mức zoom. Cách lưu tệp tùy trình duyệt và thiết bị.
+- **Hoàn tác và xuất:** hoàn tác/làm lại tối đa 25 trạng thái; nhấn **Tải ảnh** để chọn PNG, JPEG hoặc WebP và xuất canvas đã gộp lớp ở độ phân giải khung ảnh, không phụ thuộc mức zoom. Trong cùng hộp thoại, mục **Nén hình ảnh** cho phép chỉnh chất lượng JPEG/WebP; PNG giữ chất lượng lossless và nền trong suốt.
 - **Giao diện di động:** dùng được trên điện thoại; các nút trên thanh công cụ mở danh sách lớp và bảng thuộc tính. Có thể thêm ứng dụng vào màn hình chính từ Safari trên iPhone.
 
 ## Cài trên iPhone
 
-Mở ứng dụng qua HTTPS bằng Safari, nhấn **Chia sẻ** rồi chọn **Thêm vào màn hình chính**. Nếu hiện tùy chọn **Mở dưới dạng ứng dụng web**, bật tùy chọn đó rồi nhấn **Thêm**. Khi xuất PNG, dùng menu chia sẻ iOS và chọn **Lưu hình ảnh**; nếu chia sẻ tệp không khả dụng, ảnh được tải về theo cài đặt của Safari.
+Mở ứng dụng qua HTTPS bằng Safari, nhấn **Chia sẻ** rồi chọn **Thêm vào màn hình chính**. Nếu hiện tùy chọn **Mở dưới dạng ứng dụng web**, bật tùy chọn đó rồi nhấn **Thêm**. Khi xuất ảnh, dùng menu chia sẻ iOS và chọn **Lưu hình ảnh**; nếu chia sẻ tệp không khả dụng, ảnh được tải về theo cài đặt của Safari.
 
 ## Triển khai tĩnh bằng Terraform
 
@@ -78,10 +78,11 @@ Tải assets trước `index.html`; không xóa assets cũ trong lúc còn phiê
 ## Giới hạn
 
 - Hỗ trợ PNG, JPEG, WebP, GIF, AVIF và BMP theo khả năng giải mã của trình duyệt. GIF được nhập thành ảnh tĩnh.
+- Có thể xuất canvas thành PNG, JPEG hoặc WebP. Điều chỉnh chất lượng áp dụng cho JPEG/WebP; PNG là lossless. JPEG không hỗ trợ alpha nên vùng trong suốt được làm phẳng trên nền trắng.
 - Mỗi tệp tối đa 30 MB; mỗi chiều tối đa 8192 px và tổng tối đa 32 triệu pixel. Tách nền AI giới hạn 16 megapixel.
 - Cần Internet để tải model/WASM của công cụ tách nền lần đầu và phông chữ giao diện. Khi mất mạng, các phông chữ dự phòng vẫn dùng được.
 - Nếu cấu hình CSP/COEP khi triển khai, cần cho phép các nguồn CDN cần thiết cho phông chữ và model; chính sách quá hạn chế có thể làm các tính năng này không tải được.
-- Lịch sử chỉ tồn tại trong phiên. PNG xuất ra là ảnh đã gộp lớp, không phải tệp dự án có thể mở lại để sửa từng lớp.
+- Lịch sử chỉ tồn tại trong phiên. Ảnh xuất ra đã gộp lớp, không phải tệp dự án có thể mở lại để sửa từng lớp.
 - Clipboard cần localhost hoặc HTTPS cùng quyền truy cập của trình duyệt; nếu không, có thể dán bằng Ctrl+V / Cmd+V.
 - Chrome và Edge có thể mở hộp lưu để chọn tên và vị trí tệp. Trình duyệt không hỗ trợ hộp lưu này, như Firefox hoặc Safari, tải PNG theo cài đặt tải xuống của trình duyệt.
 - Trên Chrome 157.0.8103.52 từng gặp lỗi `showSaveFilePicker()` trả `AbortError` khi cửa sổ ở kích thước lớn/toàn màn hình. Có thể thử khôi phục và thu nhỏ cửa sổ. Tham khảo [Chromium issue 582407452](https://issues.chromium.org/issues/582407452); issue công khai đề cập `showDirectoryPicker()`, nên liên hệ với `showSaveFilePicker()` chưa được xác nhận độc lập.
@@ -95,4 +96,4 @@ npm test
 
 Chạy `npm run test:chrome` để kiểm tra hộp lưu native trên Chrome Stable; cần Chrome và môi trường desktop có giao diện.
 
-Playwright suite hiện có 17 kiểm thử bao gồm upload, clipboard, chỉnh sửa lớp, điều chỉnh ảnh, vẽ, canh lớp, cắt viền trong suốt, xuất PNG, lịch sử, giao diện di động và tách nền. Hộp lưu được mô phỏng trong suite mặc định; test Chrome kiểm tra hộp lưu native.
+Playwright suite hiện có 21 kiểm thử bao gồm upload, clipboard, chỉnh sửa lớp, điều chỉnh ảnh, vẽ, canh lớp, cắt viền trong suốt, xuất và nén PNG/JPEG/WebP, lịch sử, giao diện di động và tách nền. Hộp lưu được mô phỏng trong suite mặc định; test Chrome kiểm tra hộp lưu native.
