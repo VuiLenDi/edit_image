@@ -6,6 +6,16 @@ mock_provider "aws" {
   }
 }
 
+mock_provider "aws" {
+  alias = "us_east_1"
+
+  mock_data "aws_acm_certificate" {
+    defaults = {
+      arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+    }
+  }
+}
+
 run "private_https_site" {
   command = plan
 
@@ -52,6 +62,15 @@ run "private_https_site" {
   assert {
     condition     = aws_cloudfront_distribution.site.default_root_object == "index.html"
     error_message = "The Vite entry point must be the default document."
+  }
+
+  assert {
+    condition = (
+      contains(aws_cloudfront_distribution.site.aliases, "editimg.vuilendi.com") &&
+      aws_cloudfront_distribution.site.viewer_certificate[0].minimum_protocol_version == "TLSv1.2_2021" &&
+      aws_cloudfront_distribution.site.viewer_certificate[0].acm_certificate_arn == "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+    )
+    error_message = "CloudFront must retain the custom domain and its modern ACM-backed TLS certificate."
   }
 
   assert {

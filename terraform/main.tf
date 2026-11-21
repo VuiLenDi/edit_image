@@ -1,5 +1,12 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_acm_certificate" "site" {
+  provider    = aws.us_east_1
+  domain      = var.domain_name
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
 locals {
   name      = "${var.project_name}-${var.environment}"
   origin_id = "s3-${local.name}"
@@ -91,6 +98,7 @@ resource "aws_cloudfront_distribution" "site" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
+  aliases             = [var.domain_name]
   price_class         = var.price_class
   wait_for_deployment = true
   comment             = local.name
@@ -118,7 +126,9 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = data.aws_acm_certificate.site.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 

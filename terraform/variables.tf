@@ -4,6 +4,12 @@ variable "aws_region" {
   default     = "ap-southeast-1"
 }
 
+variable "domain_name" {
+  description = "Custom HTTPS domain for CloudFront; its ACM certificate must be issued in us-east-1."
+  type        = string
+  default     = "editimg.vuilendi.com"
+}
+
 variable "project_name" {
   description = "Lowercase project identifier used in AWS resource names."
   type        = string

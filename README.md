@@ -40,7 +40,7 @@ Mở ứng dụng qua HTTPS bằng Safari, nhấn **Chia sẻ** rồi chọn **T
 
 ## Triển khai tĩnh bằng Terraform
 
-Thư mục [terraform](terraform/) chứa cấu hình triển khai ứng dụng tĩnh lên S3 và CloudFront. Bucket được cấu hình riêng tư; CloudFront dùng Origin Access Control để đọc nội dung và chuyển HTTP sang HTTPS. Không cần backend ứng dụng.
+Thư mục [terraform](terraform/) chứa cấu hình triển khai ứng dụng tĩnh lên S3 và CloudFront. Bucket được cấu hình riêng tư; CloudFront dùng Origin Access Control để đọc nội dung và chuyển HTTP sang HTTPS. Domain tùy chỉnh dùng chứng chỉ ACM trạng thái `ISSUED` ở `us-east-1` và TLS tối thiểu `TLSv1.2_2021`. Không cần backend ứng dụng.
 
 Yêu cầu Terraform 1.7+ (dưới 2.0), AWS CLI và một danh tính AWS đã được cấu hình bên ngoài repository, ưu tiên SSO. Không lưu access key, token, thông tin đăng nhập, state hoặc tệp plan có dữ liệu nhạy cảm trong Git. Trước khi chạy lệnh AWS, xác nhận đúng tài khoản và môi trường bằng `aws sts get-caller-identity` và kiểm tra biến trong [terraform/terraform.tfvars.example](terraform/terraform.tfvars.example). Dùng state tách biệt cho từng môi trường; state dùng chung cần được lưu trong backend bảo vệ, có mã hóa và khóa.
 
