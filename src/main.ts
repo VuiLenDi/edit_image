@@ -82,7 +82,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="panel-title"><h2>Thuộc tính</h2>${icon('sliders-horizontal')}</div>
       <div id="nothing-selected" class="nothing-selected">${icon('mouse-pointer-2')}<p>Chưa chọn đối tượng</p></div>
       <div id="properties" hidden>
-        <section class="property-section"><label>Tên lớp<input id="layer-name" type="text" maxlength="100" /></label><div class="two-fields"><label>X<input id="pos-x" type="number" /></label><label>Y<input id="pos-y" type="number" /></label></div><div class="two-fields"><label>Rộng <span>px</span><input id="obj-width" type="number" min="1" /></label><label>Cao <span>px</span><input id="obj-height" type="number" min="1" /></label></div><label>Xoay <span>°</span><input id="rotation" type="number" min="-360" max="360" /></label><label class="range-label">Độ trong suốt <output id="opacity-value">100%</output><input id="opacity" type="range" min="0" max="100" value="100" /></label></section>
+        <section class="property-section"><label>Tên lớp<input id="layer-name" type="text" maxlength="100" /></label><div class="two-fields"><label>X<input id="pos-x" type="number" /></label><label>Y<input id="pos-y" type="number" /></label></div><div class="two-fields"><label>Rộng <span>px</span><input id="obj-width" type="number" min="1" /></label><label>Cao <span>px</span><input id="obj-height" type="number" min="1" /></label></div><label>Xoay <span>°</span><input id="rotation" type="number" min="-360" max="360" /></label><div class="rotation-presets" role="group" aria-label="Xoay nhanh"><button id="rotate-90" class="rotation-preset-button" type="button" title="Xoay đến 90 độ">90°</button><button id="rotate-minus-90" class="rotation-preset-button" type="button" title="Xoay đến -90 độ">−90°</button><button id="rotate-180" class="rotation-preset-button" type="button" title="Xoay đến 180 độ">180°</button><button id="rotate-reset" class="rotation-preset-button" type="button" title="Đặt góc xoay về 0 độ">0°</button></div><label class="range-label">Độ trong suốt <output id="opacity-value">100%</output><input id="opacity" type="range" min="0" max="100" value="100" /></label></section>
         <section id="image-properties" class="property-section" hidden>
           <h2>Điều chỉnh ảnh</h2>
           <div class="adjustment-presets"><h3>Preset</h3><div id="image-presets" class="preset-list">${adjustmentPresets.map(preset => `<button class="preset-button" type="button" data-preset="${preset.id}" aria-pressed="false">${preset.label}</button>`).join('')}</div></div>
@@ -475,6 +475,7 @@ function renderProperties() {
   input('brush-color').disabled = busy;
   input('brush-width').disabled = busy;
   for (const id of ['raise', 'lower']) input(id).disabled = objects.length !== 1 || busy;
+  for (const id of ['rotate-90', 'rotate-minus-90', 'rotate-180', 'rotate-reset']) input(id).disabled = objects.length !== 1 || busy || !objects[0].selectable;
   const alignToCanvas = element<HTMLSelectElement>('alignment-target').value === 'canvas';
   for (const alignment of alignments) {
     element<HTMLButtonElement>(`align-layers-${alignment}`).disabled = busy || objects.some(layer => !layer.selectable) || objects.length < (alignToCanvas ? 1 : 2) || (alignment === 'center-both' && !alignToCanvas);
@@ -926,6 +927,9 @@ const numeric = (id: string, update: (object: Layer, value: number) => void, min
 numeric('pos-x', (object, value) => object.set('left', value));
 numeric('pos-y', (object, value) => object.set('top', value));
 numeric('rotation', (object, value) => object.rotate(value), -360, 360);
+for (const [id, angle] of [['rotate-90', 90], ['rotate-minus-90', -90], ['rotate-180', 180], ['rotate-reset', 0]] as const) {
+  on(id, () => changeObject(object => object.rotate(angle)));
+}
 numeric('obj-width', (object, value) => object.scaleToWidth(value), 1, 16384);
 numeric('obj-height', (object, value) => object.scaleToHeight(value), 1, 16384);
 numeric('font-size', (object, value) => { if (isText(object)) object.set('fontSize', value); }, 1, 1000);

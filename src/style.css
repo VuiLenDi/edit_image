@@ -49,3 +49,4 @@
 .background-editor{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:min(820px,94dvh)}.bg-content{height:100%;max-height:none;overflow:hidden}
 @media(max-width:760px){.background-editor{height:96dvh}.bg-content{overflow:auto}}
 .layer-row.dragging{opacity:.45}.layer-row.drag-over{border-color:var(--accent);background:#e7f3ee}.layer-row.drop-before{border-top:2px solid var(--accent)}.layer-row.drop-after{border-bottom:2px solid var(--accent)}.layer-drag-handle{display:grid;place-items:center;width:16px;flex-shrink:0;color:#91a097;cursor:grab;touch-action:none}.layer-drag-handle svg{width:13px;height:16px}
+ .rotation-presets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:8px}.rotation-preset-button{min-height:31px;border:1px solid var(--line);border-radius:4px;background:#fff;color:#526b5e;font-size:10px}.rotation-preset-button:hover:not(:disabled){border-color:#b6dbcd;background:#edf7f3;color:var(--accent)}

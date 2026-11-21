@@ -23,7 +23,7 @@ Mở URL được Vite hiển thị trong terminal. Tạo bản production bằn
 ## Chức năng
 
 - **Thêm ảnh:** tải tệp, kéo thả hoặc dán ảnh từ clipboard. Có thể ghép nhiều ảnh thành các lớp.
-- **Chỉnh sửa lớp:** di chuyển, đổi kích thước, xoay, chỉnh vị trí và độ trong suốt; sắp xếp thứ tự, nhân bản, ẩn, khóa và xóa lớp. Canh trái/giữa/phải hoặc trên/giữa/dưới theo vùng chọn hay theo khung ảnh; canh chỉnh giữ nguyên kích thước, góc xoay và hỗ trợ hoàn tác/làm lại. Phím mũi tên di chuyển lớp; giữ Shift để tăng bước di chuyển.
+- **Chỉnh sửa lớp:** di chuyển, đổi kích thước, xoay bằng cách nhập góc hoặc chọn nhanh 90°, −90°, 180° và 0°, chỉnh vị trí và độ trong suốt; sắp xếp thứ tự, nhân bản, ẩn, khóa và xóa lớp. Canh trái/giữa/phải hoặc trên/giữa/dưới theo vùng chọn hay theo khung ảnh; canh chỉnh giữ nguyên kích thước, góc xoay và hỗ trợ hoàn tác/làm lại. Phím mũi tên di chuyển lớp; giữ Shift để tăng bước di chuyển.
 - **Sắp xếp và gộp lớp:** kéo thả lớp trong danh sách để đổi thứ tự. Chọn nhiều lớp để gộp thành một lớp ảnh mới; có thể hoàn tác/làm lại thao tác gộp.
 - **Điều chỉnh ảnh:** chọn preset Gốc, Đen trắng, Sepia, Hoài cổ, Tương phản cao, Ấm, Lạnh hoặc Kịch tính; tinh chỉnh riêng từng lớp với độ sáng, vùng sáng/tối, tương phản, bão hòa, đen trắng, sepia, làm mờ, xoay sắc độ và đảo màu. Độ trong suốt có điều khiển riêng trong thuộc tính lớp. Có thể đặt lại hoặc hoàn tác/làm lại điều chỉnh.
 - **Vẽ tự do:** chọn màu và kích thước cọ. Mỗi nét vẽ là một lớp riêng có thể chọn và chỉnh sửa như các lớp khác.
